@@ -1218,8 +1218,12 @@
       const list = light ? (cfg.stationSizes || ['S', 'M']) : M.sizeList(y, T.stationSize);
       const caps = light ? cfg.stationCap : mc.stationCap, cars = light ? cfg.carsBySize : mc.carsBySize;
       const factor = light ? (cfg.stationFactor[T.buildType] || 0.45) : 1;
+      // v3.39：规模名按制式取——公交的 L 档叫「BRT 站台」，不能拼成「BRT 站台车站」
+      const sName = function (sz) { return M.sizeText({ sys: sys }, sz); };
+      const sShort = function (sz) { return String(sName(sz)).replace('型', '').replace(/\s*站台$/, ''); };
+      const sLong = function (sz) { const n = sName(sz); return /站/.test(n) ? n : n + '车站'; };
       return grp(label, segc(T.stationSize, list.map(function (sz) {
-        return [sz, mc.sizeName[sz].replace('型', ''), mc.sizeName[sz] + '车站：' + U.fmtInt(caps[sz]) + ' 人次/时 · 编组上限 ' + cars[sz] + ' 辆 · 约 ' + U.fmtMoney(M.stationCost(T.buildType, sz, y) * factor) + (light ? '（' + (SYS_META[sys] || {}).name + '站按 ' + Math.round(factor * 100) + '% 计价）' : '')];
+        return [sz, sShort(sz), sLong(sz) + '：' + U.fmtInt(caps[sz]) + ' 人次/时 · 编组上限 ' + cars[sz] + ' 辆 · 约 ' + U.fmtMoney(M.stationCost(T.buildType, sz, y) * factor) + (light ? '（' + (SYS_META[sys] || {}).name + '站按 ' + Math.round(factor * 100) + '% 计价）' : '')];
       }), function (v) { T.stationSize = v; }));
     };
     this._replacingToolOpts = true;
@@ -2090,7 +2094,10 @@
   // 车站规模卡片：容量、编组上限、建设费、日运营费。
   // opts：{ type, cur（当前选择）, base（既有车站的已建规模，新建时为空）, rebuild（建设方式已改，按改建计费）, onPick }
   UI.prototype.sizeCards = function (opts) {
-    const g = this.g(), y = g.clock.y, mc = CFG.metro, oi = g.econ.opsIndex(y), ord = M.sizeList(y, opts.base === 'XL' || opts.cur === 'XL' ? 'XL' : null);
+    const g = this.g(), y = g.clock.y, mc = CFG.metro, oi = g.econ.opsIndex(y);
+    // v3.39：轻轨/公交的档位取各自 stationSizes（现在都含 L 档），地铁仍用 sizeList（含 XL 解锁判断）
+    const sysSizes = opts.sys && opts.sys !== 'metro' ? (CFG[opts.sys] || {}).stationSizes : null;
+    const ord = sysSizes ? sysSizes.slice() : M.sizeList(y, opts.base === 'XL' || opts.cur === 'XL' ? 'XL' : null);
     // v3.30：按本站制式显示每小时进出站能力与编组上限，别再一律显示地铁站台的 15000 人次/时
     const scfg = opts.sys && opts.sys !== 'metro' ? CFG[opts.sys] : null;
     const caps = scfg ? M.capTableFor(opts.sys) : mc.stationCap;
@@ -2107,7 +2114,7 @@
         line = d === 0 ? '已建规模' : (d > 0 ? '升级 ' + U.fmtMoney(upCost(sz)) : '缩减 · 不退款');
       }
       cards.appendChild(h('button', { class: 'size-card' + (opts.cur === sz ? ' on' : ''), 'aria-pressed': opts.cur === sz ? 'true' : 'false', onclick: function () { if (opts.cur !== sz) opts.onPick(sz); } },
-        h('div', { class: 'sc-h' }, h('b', null, mc.sizeName[sz]), opts.base === sz ? h('span', { class: 'sc-tag' }, '当前') : null),
+        h('div', { class: 'sc-h' }, h('b', null, M.sizeText({ sys: opts.sys || 'metro' }, sz)), opts.base === sz ? h('span', { class: 'sc-tag' }, '当前') : null),
         h('div', { class: 'sc-v' }, U.fmtInt(caps[sz] || mc.stationCap[sz] || 0), h('small', null, ' 人次/时')),
         h('div', { class: 'sc-k' }, '编组上限 ' + (cars[sz] || mc.carsBySize[sz]) + ' 节'),
         h('div', { class: 'sc-k' }, '运营 ' + U.fmtMoney(CFG.ops.stationDaily[sz] * oi) + '/日'),

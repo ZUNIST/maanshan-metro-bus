@@ -672,6 +672,11 @@
   // 轻轨类（电车+公交）：站台小、站距密、造价折扣、共用一套垂直分层换乘规则
   M.isLight = function (L) { const s = M.sysOf(L); return s === 'tram' || s === 'bus'; };
   M.sysName = function (L) { return { metro: '地铁', tram: '有轨电车', bus: '公共汽车' }[M.sysOf(L)]; };
+  // 站台规模的显示名按制式取值（v3.39）：公交的 L 档叫「BRT 站台」，其余沿用 小型/中型/大型
+  M.sizeText = function (L, size) {
+    const cfg = M.cfgOf(L);
+    return (cfg && cfg.sizeName && cfg.sizeName[size]) || CFG.metro.sizeName[size] || size;
+  };
   // 公交是虚拟线路：不铺轨道、只在路面画线与站牌，因此不计拆迁补偿（config.noDemolition）；
   // 也只修地面线路与车站（config.surfaceOnly）。这两条按制式配置读取，便于以后调参。
   M.noDemolition = function (L) { return !!(L && M.cfgOf(L).noDemolition); };
@@ -1429,6 +1434,11 @@
     // 车站
     res.siteReset = [];   // 确认后需记录新“付费选址”的车站（新建、改建、搬迁）
     res.paidLen = {};     // 确认后各轨道的“已付费长度”（米）：免费的小幅调整按它累计，累计超出免费额度即按延长收费
+    // v3.39：站台规模名按该站所属线路的制式取（公交的 L 档在日志里也应写「BRT 站台」）
+    const sizeNm = function (st) {
+      const lid = st.line || (st.lines && st.lines[0]);
+      return M.sizeText(lid ? draft.lines[lid] : null, st.size);
+    };
     for (const id in draft.stations) {
       const s = draft.stations[id], o = off.stations[id];
       const c = city.cellAt(s.x, s.y);
@@ -1438,7 +1448,7 @@
       const dl = s.lv ? M.stationLevels(draft, id) : [s.type], ol = o ? (o.lv ? M.stationLevels(off, id) : [o.type]) : [];
       const lvf = CFG.metro.levelFactor || 0.6, levelsTxt = dl.length > 1 ? '·' + M.levelsText(dl) + '（天地换乘）' : '·' + CFG.metro.typeName[s.type];
       if (!o) {
-        res.changes.add.push('新建车站「' + s.name + '」（' + CFG.metro.sizeName[s.size] + levelsTxt + '）');
+        res.changes.add.push('新建车站「' + s.name + '」（' + sizeNm(s) + levelsTxt + '）');
         item('construction', '新建车站 ' + s.name, M.stationCostOf(draft, id, s.type, s.size, year), id);
         if (c >= 0 && city.regions[city.region[c]].scenic) item('construction', '风景区环境保护费 · 车站 ' + s.name, M.envStationFee(s.type, s.size, year), id);
         { const hf = M.heritageStationFee(city, s.x, s.y, s.type, s.size, year); if (hf > 0) item('construction', (city.heritage[c] === 2 ? '古建保护费 · 车站 ' : '历史城区保护费 · 车站 ') + s.name, hf, id); }
@@ -1465,12 +1475,12 @@
         }
         const ord = { S: 0, M: 1, L: 2, XL: 3 };
         if (ord[s.size] > ord[o.size] && s.type === o.type) {
-          res.changes.mod.push('车站「' + s.name + '」升级为' + CFG.metro.sizeName[s.size]);
-          item('upgrade', '升级车站 ' + s.name + '（' + CFG.metro.sizeName[o.size] + '→' + CFG.metro.sizeName[s.size] + '）', (M.stationCostOf(draft, id, s.type, s.size, year) - M.stationCostOf(draft, id, s.type, o.size, year)) * C.upgradeFactor, id);
+          res.changes.mod.push('车站「' + s.name + '」升级为' + sizeNm(s));
+          item('upgrade', '升级车站 ' + s.name + '（' + CFG.metro.sizeName[o.size] + '→' + sizeNm(s) + '）', (M.stationCostOf(draft, id, s.type, s.size, year) - M.stationCostOf(draft, id, s.type, o.size, year)) * C.upgradeFactor, id);
           // 已有的其他站台层一并扩容
           for (const t of dl) if (t !== s.type && ol.indexOf(t) >= 0) item('upgrade', '升级' + CFG.metro.typeName[t] + '站台 ' + s.name, (M.stationCostOf(draft, id, t, s.size, year) - M.stationCostOf(draft, id, t, o.size, year)) * C.upgradeFactor * lvf, id);
         } else if (ord[s.size] < ord[o.size]) {
-          res.changes.mod.push('车站「' + s.name + '」缩减为' + CFG.metro.sizeName[s.size] + '（不退款）');
+          res.changes.mod.push('车站「' + s.name + '」缩减为' + sizeNm(s) + '（不退款）');
         }
         if (s.name !== o.name) res.changes.mod.push('车站更名：' + o.name + ' → ' + s.name);
         if (M.platDirsChanged(off, draft, id)) { res.changes.mod.push('车站「' + s.name + '」调整站台方向'); touchedSt.add(id); }
@@ -1716,8 +1726,16 @@
       });
     });
     // 地面线路平交
+    // 公交没有钢轨（v3.39）：直接在城市道路上行驶，与任何轨道平面交叉都不构成冲突——
+    // 现实里公交穿过电车轨道、铁路道口、地铁地面段（或从高架/地下线下方通过）都是常态。
+    // 因此公交段不进入平交判定（任意一方是公交即放行）；电车与地铁之间的平交规则不变。
     const surf = [];
-    for (const id in draft.segments) if (draft.segments[id].type === 'surface') surf.push(draft.segments[id]);
+    for (const id in draft.segments) {
+      const s = draft.segments[id];
+      if (s.type !== 'surface') continue;
+      if (M.isBus(draft.lines[s.line])) continue;
+      surf.push(s);
+    }
     for (let a = 0; a < surf.length; a++) for (let b = a + 1; b < surf.length; b++) {
       const s1 = surf[a], s2 = surf[b];
       if (!touched.has(s1.id) && !touched.has(s2.id)) continue;
@@ -1928,12 +1946,14 @@
             fixes: fixes });
         }
       }
-      // 轻轨类车站只允许小型与中型（低地板站台 / 候车亭，用不上地铁大站台）
+      // 轻轨类车站按制式允许的档位（v3.39：有轨电车 S/M/L、公交 S/M/L/BRT 站台，见 config.stationSizes）
       if (lightL.length && !metroL.length && !M.sizeOkFor(draft.lines[lightL[0]], st.size)) {
+        const lL = draft.lines[lightL[0]], lSizes = (M.cfgOf(lL).stationSizes || ['S', 'M']);
+        const lNames = lSizes.map(function (z) { return M.sizeText(lL, z); });
         conflict({ type: 'tramSize', kind: 'station', ref: sid, x: st.x, y: st.y,
-          msg: '车站「' + st.name + '」是' + (CFG.metro.sizeName[st.size] || st.size) + '车站，' + M.sysName(draft.lines[lightL[0]]) + '只能建小型或中型车站',
-          how: '轻轨类站台只有 35–40 m，够几节短车或一辆公交。把这座车站改为中型（或小型），或者让这条线改走一条地铁线不进这个站。',
-          fixes: [{ label: '改为中型车站', op: 'stationSize', station: sid, value: 'M' }, { label: '改为小型车站', op: 'stationSize', station: sid, value: 'S' }] });
+          msg: '车站「' + st.name + '」是' + (CFG.metro.sizeName[st.size] || st.size) + '车站，' + M.sysName(lL) + '只能建' + lNames.join(' / '),
+          how: '轻轨/公交的站台比地铁短（有轨电车 35–60 m，公交站台只有候车区与停车位），停不下地铁的大型站厅。把这座车站改为该制式支持的档位，或者让这条线不进这个站。',
+          fixes: lSizes.map(function (z) { return { label: '改为' + M.sizeText(lL, z), op: 'stationSize', station: sid, value: z }; }) });
       }
       // 公交只有地面车站（v-bus）：老存档或改建可能留下地下/高架站台，这里兜底改成地面
       if (busL.length) {
