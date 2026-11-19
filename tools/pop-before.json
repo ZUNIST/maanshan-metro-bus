@@ -1,0 +1,68 @@
+{
+ "total": 820000,
+ "urbanCells": 2159,
+ "ruralCells": 134289,
+ "urbanPop": 373198,
+ "ruralPop": 446802,
+ "urbanShare": 45.5,
+ "ruralShare": 54.5,
+ "ruralDrawnCells": 406,
+ "ruralDrawnPct": 0.3,
+ "blankCells": 133883,
+ "regions": [
+  {
+   "name": "含山",
+   "pop": 324098,
+   "cells": 52480,
+   "drawn": 74,
+   "drawnPct": 0.14,
+   "urban": 731,
+   "share": 39.5
+  },
+  {
+   "name": "和县",
+   "pop": 125923,
+   "cells": 29800,
+   "drawn": 101,
+   "drawnPct": 0.34,
+   "urban": 279,
+   "share": 15.4
+  },
+  {
+   "name": "主城",
+   "pop": 169857,
+   "cells": 6750,
+   "drawn": 94,
+   "drawnPct": 1.39,
+   "urban": 818,
+   "share": 20.7
+  },
+  {
+   "name": "当涂",
+   "pop": 143226,
+   "cells": 19210,
+   "drawn": 82,
+   "drawnPct": 0.43,
+   "urban": 271,
+   "share": 17.5
+  },
+  {
+   "name": "博望",
+   "pop": 56896,
+   "cells": 28208,
+   "drawn": 55,
+   "drawnPct": 0.19,
+   "urban": 60,
+   "share": 6.9
+  },
+  {
+   "name": "其它",
+   "pop": 0,
+   "cells": 0,
+   "drawn": 0,
+   "drawnPct": null,
+   "urban": 0,
+   "share": 0
+  }
+ ]
+}

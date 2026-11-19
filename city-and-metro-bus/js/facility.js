@@ -1,0 +1,308 @@
+'use strict';
+// 城市设施（v1.9）：重要设施（铁路客运站、机场、大学、医院、商圈、商务区、景点、公园、体育场馆、会展中心）
+// 按真实位置、启用/停用年份与规模单独参与出行需求（sim.js 中作为独立的出行目的地节点）；
+// 普通设施（中小学、社区商业、诊所、街区公园等）不逐个建模，按交通小区的用地、人口与岗位汇总（sim.js buildZones）。
+// 数据来源：位置与年份见各地图数据文件 facilities（史实参考 / 虚构），规模均为估算；模拟到访量为游戏结果。
+(function (CM) {
+  const U = CM.U, D = CM.DATA;
+
+  // p：吸引的出行目的及比例；we：周末相对该目的平均水平的吸引倍数；L：距离衰减长度相对 distDecayHO 的倍数；r：默认场地半径（格）
+  const TYPES = {
+    rail: { name: '铁路客运站', icon: 'train', p: { hb: 1 }, hub: true, we: 1, L: 0, r: 0.6, group: '交通枢纽' },
+    air: { name: '机场', icon: 'plane', p: { hb: 1 }, hub: true, we: 1, L: 0, r: 1.2, group: '交通枢纽' },
+    uni: { name: '大学', icon: 'school', p: { sc: 1 }, we: 3, L: 1.8, r: 1.0, group: '教育' },
+    hosp: { name: '医院', icon: 'hospital', p: { md: 1 }, we: 1, L: 1.8, r: 0.5, group: '医疗' },
+    shop: { name: '商圈', icon: 'bag', p: { sh: 0.8, lz: 0.2 }, we: 1.1, L: 1.5, r: 1.0, group: '商业' },
+    cbd: { name: '商务区', icon: 'building', p: { sh: 1 }, we: 0.35, L: 1.6, r: 1.4, group: '商业' },
+    // 产业园区 / 保税区 / 港口作业区（v3.35）：以通勤为主、几乎没有购物与休闲吸引，
+    // 周末客流明显低于工作日（we 0.55）。郑蒲港综合保税区从「受保护地标」改成这个类型，
+    // 它就该是一个每天产生三班倒通勤的目的地，而不是一块不能动的保护建筑。
+    ind: { name: '产业园区', icon: 'factory', p: { hb: 1 }, we: 0.55, L: 1.7, r: 1.2, group: '就业' },
+    scenic: { name: '景点', icon: 'camera', p: { lz: 1 }, we: 1.25, L: 2.6, r: 0.8, group: '旅游休闲' },
+    park: { name: '公园', icon: 'tree', p: { lz: 1 }, we: 1.15, L: 1.4, r: 1.0, group: '旅游休闲' },
+    stadium: { name: '体育场馆', icon: 'stadium', p: { lz: 1 }, we: 1.3, L: 2.4, r: 0.6, group: '旅游休闲' },
+    venue: { name: '会展中心', icon: 'expo', p: { sh: 0.6, lz: 0.4 }, we: 0.6, L: 2.4, r: 0.8, group: '商业' },
+  };
+  const Fac = { TYPES: TYPES };
+  CM.Fac = Fac;
+
+  // 地图外设施的接驳点（v2.1，数据中 ext: [方向, 距地图边缘公里数]）：设施本体在地图外，图上标出方向与距离
+  const EXT_DIR = { N: [0, -1], S: [0, 1], E: [1, 0], W: [-1, 0], NE: [0.7071, -0.7071], NW: [-0.7071, -0.7071], SE: [0.7071, 0.7071], SW: [-0.7071, 0.7071] };
+  const EXT_NAME = { N: '北', S: '南', E: '东', W: '西', NE: '东北', NW: '西北', SE: '东南', SW: '西南' };
+  // 从 (x,y) 沿方向 v 到地图边缘的距离（格）
+  Fac.edgeDist = function (x, y, v) {
+    const W = CM.CFG.W, H = CM.CFG.H;
+    let s = Infinity;
+    if (v[0] > 0) s = Math.min(s, (W - x) / v[0]); else if (v[0] < 0) s = Math.min(s, -x / v[0]);
+    if (v[1] > 0) s = Math.min(s, (H - y) / v[1]); else if (v[1] < 0) s = Math.min(s, -y / v[1]);
+    return isFinite(s) ? Math.max(0, s) : 0;
+  };
+  // 地图外设施的接驳口（v2.1）：设施方向上的地图边缘点（ex, ey），以及紧贴边缘线内侧的建站位置（x, y）。
+  // 线路修到边缘线上的接驳口附近（或点击地图外的提示卡）即吸附到这里建站，在地图边缘接通该设施：不受区域开放、水面等选址限制
+  Fac.portal = function (f) {
+    if (!f || !f.ext) return null;
+    if (f._portal && f._portalW === CM.CFG.W) return f._portal;
+    // 城市连接的接驳口（v2.7）：边境在地图中间，接驳口就在设施自己的位置
+    if (f.ext.gate) { f._portal = { x: f.x, y: f.y, ex: f.x, ey: f.y }; f._portalW = CM.CFG.W; return f._portal; }
+    const v = f.ext.v, s = Fac.edgeDist(f.x, f.y, v), ex = f.x + v[0] * s, ey = f.y + v[1] * s;
+    f._portal = { x: ex - v[0] * 0.1, y: ey - v[1] * 0.1, ex: ex, ey: ey }; f._portalW = CM.CFG.W;
+    return f._portal;
+  };
+  // 接驳口点表（按地图缓存）：判定「没有 portal 字段、但正好建在接驳口上」的车站用。
+  // 开局接管的既有线网（game.js buildInitialNetwork）不给车站写 portal 字段，高家冲、铜井这类站
+  // 只能靠坐标落在接驳口上被认出来；isPortalStation(s) 不传设施时需要这张表。
+  Fac.portalPts = function () {
+    const key = (CM.mapId || '') + ':' + CM.CFG.W + 'x' + CM.CFG.H;
+    if (Fac._ppKey === key && Fac._pp) return Fac._pp;
+    const out = [];
+    for (const f of Fac.list()) {
+      if (!f.ext || !f.ext.gate) continue;   // 只认城市连接的接驳口；机场、港口的接驳点另有 extNear 判定
+      const p = Fac.portal(f);
+      if (p) out.push({ id: f.id, f: f, x: p.x, y: p.y });
+    }
+    Fac._ppKey = key; Fac._pp = out;
+    return out;
+  };
+  // (x,y) 是否落在某个接驳口上（r 格内），是则返回该设施；r 默认 1 格（250 m）
+  Fac.portalAt = function (x, y, r) {
+    if (x == null || y == null) return null;
+    r = r == null ? 1 : r;
+    for (const p of Fac.portalPts()) if (Math.abs(p.x - x) <= r && Math.abs(p.y - y) <= r && U.dist(x, y, p.x, p.y) < r) return p.f;
+    return null;
+  };
+  Fac.isPortalStation = function (st, f) {
+    if (!st) return false;
+    // 没经吸附、直接建在接驳口上的普通车站（250 m 内）同样算接通（v2.7.1 玩家反馈：香港罗湖接驳口里的车站离接驳口约 1 m，仍提示没接通）
+    if (!st.portal) {
+      const p0 = f && f.ext && f.ext.gate ? Fac.portal(f) : null;
+      if (p0) return U.dist(st.x, st.y, p0.x, p0.y) < 1;
+      // 没有指定设施时按全部接驳口判断（开局既有线网里的接驳口站就是这样：站名即接驳口名，坐标与接驳口重合）
+      return !!Fac.portalAt(st.x, st.y, 1);
+    }
+    if (f && st.portal !== f.id) return false;
+    const pf = f || Fac.byId(st.portal), p = Fac.portal(pf);
+    return !!p && U.dist(st.x, st.y, p.x, p.y) < 1.2;   // 车站被拖离接驳口后不再算接通
+  };
+  // 口岸附近可接驳的车站按距离排序，供各时段从实际开行的线路中选路。
+  Fac.gateStations = function (f, C) {
+    const p = Fac.portal(f), matches = [];
+    C.stations.forEach(function (s, i) {
+      if (C.serviced[i] && Fac.isPortalStation(s, f)) matches.push({ i: i, d: U.dist(s.x, s.y, p.x, p.y) });
+    });
+    return matches.sort(function (a, b) { return a.d - b.d; });
+  };
+  Fac.shortName = function (f) { return f.name.replace(/（.*）/, ''); };
+  // 接驳点或接驳口附近的普通车站（玩家反馈：大兴机场的接驳点周围没有人行道，车站显示已接通却没有旅客）：
+  // 直线距离在范围内就算接通，不要求有路。界面（extLink）和客流（sim.js computeAccess）都用这一条。
+  // 返回到较近一处的距离（格），不算接通时为 -1；口岸只认建在接驳口上的车站，这里总是 -1
+  Fac.extNear = function (f, st) {
+    if (!f.ext || f.ext.gate) return -1;
+    const P = Fac.portal(f), d = Math.min(U.dist(st.x, st.y, f.x, f.y), U.dist(st.x, st.y, P.x, P.y));
+    return d <= 0.8 * CM.CFG.walk.maxAccessM / CM.CFG.CELL_M ? d : -1;
+  };
+  // 地铁接通地图外（v2.1）：接驳口有运营中的车站，或接驳点、接驳口约 800 m 内有运营中的车站，即视为线路在地图边缘接通该设施，
+  // 接驳需求由地铁满足。返回车站（编译后网络中的序号、车站、经过的线路），未接通时为 null；按运营网络缓存
+  Fac.extLink = function (f, g) {
+    if (!f.ext || !g || !g.compiled) return null;
+    const C = g.compiled;
+    if (C._ext && C._ext.has(f.id)) return C._ext.get(f.id);
+    let best = -1, bd = Infinity, portal = false, closestPortal = Infinity;
+    C.stations.forEach(function (s, i) {
+      if (!C.serviced[i]) return;
+      if (Fac.isPortalStation(s, f)) {
+        const p = Fac.portal(f), d = U.dist(s.x, s.y, p.x, p.y);
+        if (d < closestPortal) { best = i; bd = 0; portal = true; closestPortal = d; }
+        return;
+      }
+      const d = Fac.extNear(f, s); if (!portal && d >= 0 && d <= bd) { bd = d; best = i; }
+    });
+    const r = best < 0 ? null : { i: best, st: C.stations[best], lines: Array.from(C.stationLines[best]), d: bd, portal: portal };
+    (C._ext || (C._ext = new Map())).set(f.id, r);
+    return r;
+  };
+  Fac.extText = function (f) { return !f.ext ? '' : f.ext.gate ? '通往' + (f.ext.to || '对岸') : '在地图' + (EXT_NAME[f.ext.dir] || '') + '侧外约 ' + f.ext.km + ' km'; };
+  const yrOf = function (v) { return v == null ? null : (Array.isArray(v) ? v[0] + ((v[1] || 1) - 1) / 12 : v); };
+  const curve = function (v) { return typeof v === 'number' ? [[0, v]] : v; };
+
+  // 设施中心落在水面上（如公园的中心是湖）时移到最近的陆地（v2.6.1）：中心不在陆地的设施永远不会启用，玩家也看不出原因。按现代陆地判断，填海地不受影响
+  function snapToLand(f, city) {
+    const LM = city.landMax, c0 = city.cellAt(f.x, f.y);
+    if (!LM || c0 < 0 || LM[c0] >= 0.5) return;
+    const i0 = Math.floor(f.x), j0 = Math.floor(f.y);
+    let best = null, bd = 1e9;
+    for (let j = j0 - 8; j <= j0 + 8; j++) for (let i = i0 - 8; i <= i0 + 8; i++) {
+      if (i < 0 || j < 0 || i >= city.W || j >= city.H || LM[j * city.W + i] < 0.5) continue;
+      const d = U.dist(i + 0.5, j + 0.5, f.x, f.y);
+      if (d < bd) { bd = d; best = [i + 0.5, j + 0.5]; }
+    }
+    if (best) { f.x = best[0]; f.y = best[1]; }
+  }
+  // 当前地图的设施表（按地图数据缓存）。lm：引用地标（位置、场地与落成年份取自地标）
+  // city：传入时同时生成片区设施（需要城市的片区划分）；不传时沿用最近一次生成的表
+  Fac.list = function (city) {
+    // 切换地图后旧城市的迟到调用：不按新地图的设施表生成，也不覆盖缓存（玩家反馈：不同城市的设施与需求混在一起）
+    if (city && city.mapId && city.mapId !== CM.mapId) return [];
+    if (D._facSrc === D.facilities && D._fac && (!city || D._facCity === city)) return D._fac;
+    const out = [];
+    const lms = D.landmarks || [];
+    (D.facilities || []).forEach(function (s, i) {
+      const T = TYPES[s.t]; if (!T) return;
+      const f = { k: out.length, id: s.id || ('f' + i), name: s.n, label: s.label || s.n, t: s.t, T: T, x: 0, y: 0, r: s.r != null ? s.r : T.r, lmK: -1,
+        open: null, close: yrOf(s.y1), w: s.w != null ? curve(s.w) : null, pax: s.pax || null, p: s.p || T.p, we: s.we || null, note: s.note || '', src: s.src || null,
+        ext: s.ext ? { dir: s.ext[0], km: s.ext[1], v: EXT_DIR[s.ext[0]] || [0, 0], gate: !!s.gate, to: s.to || null } : null, rw: s.rw || null, noModel: !!s.noModel };   // rw：机场自己的跑道（格坐标，v2.2，用于模型选址）
+      if (s.lm) {
+        const k = lms.findIndex(function (l) { return l.id === s.lm; });
+        if (k < 0) return;
+        f.lmK = k; f.x = lms[k].x; f.y = lms[k].y;
+        f.open = s.y0 != null ? yrOf(s.y0) : lms[k].year;
+      } else if (s.at) { f.x = s.at[0]; f.y = s.at[1]; f.open = s.y0 != null ? yrOf(s.y0) : -1e9; }
+      else return;
+      if (f.open == null) f.open = -1e9;
+      if (city && f.lmK < 0 && !f.ext) snapToLand(f, city);
+      out.push(f);
+    });
+    if (city) genDistrict(out, city);
+    D._fac = out; D._facSrc = D.facilities; D._facCity = city || null;
+    return out;
+  };
+  // 片区设施（v2.1 第二轮：重要设施集中在老城与天河，外围片区发展起来后没有设施需求）：真实地图的每个片区
+  // 生成区域级商业中心、医院与文体公园，片区开放且人口达到门槛后启用；附近已有同类真实设施时不生成。
+  // 位置取片区内规模最大的发展中心（DATA.centers），没有时取片区中心。门槛按本图 2020 年人口的比例
+  const GEN = [
+    { t: 'shop', suf: '商业中心', w: 0.012, min: 0.012, near: 3.5, like: ['shop', 'cbd'] },
+    { t: 'hosp', suf: '区域医院', w: 0.015, min: 0.02, near: 4, like: ['hosp'] },
+    { t: 'park', suf: '文体公园', w: 0.008, min: 0.015, near: 3, like: ['park', 'scenic', 'stadium'] },
+  ];
+  // 路网密度（5×5 格内的道路与街道总长，单位格）：只看地图数据、不看年份，片区设施的位置不随存档进度变化。快速路不能步行，桥隧不算
+  function roadField(city) {
+    if (city._roadField) return city._roadField;
+    const W = city.W, H = city.H, raw = new Float32Array(W * H), F = new Float32Array(W * H);
+    const add = function (p) { for (let q = 0; q + 3 < p.length; q += 2) { const i = Math.floor((p[q] + p[q + 2]) / 2), j = Math.floor((p[q + 1] + p[q + 3]) / 2); if (i >= 0 && j >= 0 && i < W && j < H) raw[j * W + i] += U.dist(p[q], p[q + 1], p[q + 2], p[q + 3]); } };
+    for (const w of city.roadWays || []) { const g = city.roadGroups[w.g]; if (g.cls !== 4 && !(g.flags & 3)) add(w.p); }
+    for (const s of (CM.Geo && CM.Geo.streets) || []) add(s.p);
+    for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+      let v = 0;
+      for (let b = Math.max(0, j - 2); b <= Math.min(H - 1, j + 2); b++) for (let a = Math.max(0, i - 2); a <= Math.min(W - 1, i + 2); a++) v += raw[b * W + a];
+      F[j * W + i] = v;
+    }
+    return (city._roadField = F);
+  }
+  // 片区设施的位置（v2.6.1 玩家反馈：蔡甸商业中心落在湖边没有路的洼地上，周围修了 4 座站也走不到）：
+  // 有发展中心且周围路够密时用发展中心；否则取片区里路最密、又靠近片区路网重心的地方。路太少（不足约 1.5 km）的片区不生成
+  const GEN_MIN_ROAD = 6;
+  function genSite(city, k, ct) {
+    const W = city.W, F = roadField(city), reg = city.region, LM = city.landMax;
+    let mx = 0, sx = 0, sy = 0, sw = 0, n = 0;
+    for (let c = 0; c < city.N; c++) {
+      if (reg[c] !== k || LM[c] < 0.5) continue;
+      const v = F[c], i = c % W + 0.5, j = ((c / W) | 0) + 0.5; n++;
+      if (v > mx) mx = v;
+      sx += i * v; sy += j * v; sw += v;
+    }
+    if (mx < GEN_MIN_ROAD) return null;
+    if (ct) { const c0 = city.cellAt(ct[0], ct[1]); if (c0 >= 0 && F[c0] >= mx * 0.4 && LM[c0] >= 0.5) return ct; }
+    const rx = ct ? ct[0] : sx / sw, ry = ct ? ct[1] : sy / sw, sig = ct ? 8 : Math.max(8, Math.sqrt(n) * 0.6);
+    let best = -1, at = null;
+    for (let c = 0; c < city.N; c++) {
+      if (reg[c] !== k || LM[c] < 0.5) continue;
+      const i = c % W + 0.5, j = ((c / W) | 0) + 0.5, s = F[c] * Math.exp(-U.dist(i, j, rx, ry) / sig);
+      if (s > best) { best = s; at = [i, j]; }
+    }
+    return at;
+  }
+  function genDistrict(out, city) {
+    const CFG = CM.CFG, regs = city.regions || [];
+    if (D.fictional || !city.region) return;
+    const km = CFG.CELL_M / 1000, popRef = U.interp(CFG.growth.popCurve, CFG.growth.histEnd);
+    // 并列时怎么选「片区内规模最大的中心」（v3.35）：每个点亮格的人口+就业都是同一个 FLOOR 值
+    // （data_*.js 的建成区做法），县城和十来户的小集镇单格权重完全相等，只靠 `>` 比较就退化成
+    // 「谁的数组下标在前」——含山的商业中心/医院/公园因此落到了昭关的农田里（用户反馈的点位错）。
+    // 这里用「周围 5 格内的建成中心数」当镇区规模，只在权重并列（±2%）时生效，权重确实不同的选区不受影响。
+    const cellCnt = new Map();
+    for (const ct of D.centers || []) {
+      const kk = Math.floor(ct.x / 2) + ',' + Math.floor(ct.y / 2);
+      cellCnt.set(kk, (cellCnt.get(kk) || 0) + 1);
+    }
+    const urbanScale = function (ct) {
+      const bx = Math.floor(ct.x / 2), by = Math.floor(ct.y / 2);
+      let n = 0;
+      for (let b = by - 2; b <= by + 2; b++) for (let a = bx - 2; a <= bx + 2; a++) n += cellCnt.get(a + ',' + b) || 0;
+      return n;
+    };
+    regs.forEach(function (rg, k) {
+      if (rg.scenic || rg.hub || rg.noGen || rg.open == null || !rg.cells || rg.cx == null || rg === D.defaultRegion) return;   // 不含风景区、机场等枢纽、纯工业区（noGen，v2.8）、永久不开放的片区与「外围地区」
+      let ctAt = null, best = -1, bestSc = -1;
+      for (const ct of D.centers || []) {
+        const c = city.cellAt(ct.x, ct.y);
+        if (c < 0 || city.region[c] !== k) continue;
+        const w = ct.pop + ct.jobs, sc = urbanScale(ct);
+        if (w > best * 1.02) { ctAt = [ct.x, ct.y]; best = w; bestSc = sc; }
+        else if (w >= best * 0.98 && sc > bestSc) { ctAt = [ct.x, ct.y]; best = Math.max(best, w); bestSc = sc; }
+      }
+      const at = genSite(city, k, ctAt);
+      if (!at) return;
+      // 名称取片区名去掉括注；机场旧址片区以括注中的新城名命名（如「白云新城」）
+      const nm = String(rg.name), paren = /（([^（）·]+)）/.exec(nm), short = rg.id === 'airport' && paren ? paren[1] : nm.replace(/（.*）/, '');
+      for (const G of GEN) {
+        if (out.some(function (f) { return G.like.indexOf(f.t) >= 0 && !f.ext && U.dist(f.x, f.y, at[0], at[1]) * km < G.near; })) continue;
+        const T = TYPES[G.t];
+        out.push({ k: out.length, id: 'gen-' + (rg.id || k) + '-' + G.t, name: short + G.suf, t: G.t, T: T, x: at[0], y: at[1], r: T.r, lmK: -1,
+          open: -1e9, close: null, w: [[0, G.w]], pax: null, p: T.p, note: '片区人口达到约 ' + U.fmtPeople(popRef * G.min) + ' 后出现的区域级设施（按片区发展生成，非真实设施）', src: null, ext: null,
+          gen: { k: k, min: popRef * G.min } });
+      }
+    });
+  }
+  // 片区人口（按城市版本缓存）
+  Fac.regionPop = function (city, k) {
+    let c = city._regPop;
+    if (!c || c.v !== city.version) {
+      const pop = new Float64Array(city.regions.length);
+      for (let i = 0; i < city.N; i++) { const r = city.region[i]; if (r < pop.length) pop[r] += city.pop[i]; }
+      c = city._regPop = { v: city.version, pop: pop };
+    }
+    return c.pop[k] || 0;
+  };
+  Fac.byId = function (id) { const L = Fac.list(); for (const f of L) if (f.id === id) return f; return null; };
+  // 是否在运营：启用年份之后、停用年份之前；引用地标的须地标已落成（填海等场地成陆后），其余须所在格为陆地
+  Fac.active = function (f, yr, city) {
+    if (yr < f.open || (f.close != null && yr >= f.close)) return false;
+    if (f.lmK >= 0) return !!(city.landmarkOn && city.landmarkOn[f.lmK]);
+    if (f.gen && (!city.regionOpen[f.gen.k] || Fac.regionPop(city, f.gen.k) < f.gen.min)) return false;
+    const c = city.cellAt(f.x, f.y);
+    return c >= 0 && city.landFrac[c] >= 0.3;
+  };
+  // 枢纽：接驳出行（汽车 + 地铁，到达与离开合计，人次/日，工作日）；其他：占全市该目的出行吸引的比例（周期规模，估算）
+  Fac.pax = function (f, yr) { return f.pax ? U.interp(f.pax, yr) * 1e4 : 0; };
+  // 吸引比例按 trips.facBoost 放大（v2.1 第二轮：设施出行需求整体偏少）；sim.js 中各目的的设施合计另有上限
+  Fac.share = function (f, yr) { return f.w ? U.interp(f.w, yr) * (CM.CFG.trips.facBoost || 1) : 0; };
+  // 场地格：地标场地或以设施为中心、半径 r 的格（只取陆地）
+  Fac.siteCells = function (f, city) {
+    const out = [];
+    if (f.lmK >= 0) { for (const c of city.landmarkCells(D.landmarks[f.lmK])) if (city.landFrac[c] >= 0.3) out.push(c); }
+    else {
+      const R = Math.max(0.5, f.r);
+      for (let j = Math.floor(f.y - R); j <= Math.floor(f.y + R); j++) for (let i = Math.floor(f.x - R); i <= Math.floor(f.x + R); i++) {
+        if (i < 0 || j < 0 || i >= city.W || j >= city.H) continue;
+        if (U.dist(i + 0.5, j + 0.5, f.x, f.y) > R + 0.2) continue;
+        const c = j * city.W + i; if (city.landFrac[c] >= 0.3) out.push(c);
+      }
+    }
+    const c0 = city.cellAt(f.x, f.y);
+    if (!out.length && c0 >= 0) out.push(c0);
+    return out;
+  };
+  // 规模说明（参考规模，估算）
+  Fac.sizeText = function (f, yr) {
+    if (f.T.hub) return '约 ' + U.fmtNum(Fac.pax(f, yr) / 1e4, 1) + ' 万人次/日的市内接驳出行（工作日，估算）';
+    const keys = Object.keys(f.p), nm = CM.CFG.trips.name;
+    return '约占全市' + keys.map(function (k) { return nm[k]; }).join('、') + '出行吸引的 ' + U.fmtPct(Fac.share(f, yr), 1) + '（估算）';
+  };
+  Fac.purposeText = function (f) { const nm = CM.CFG.trips.name; return Object.keys(f.p).map(function (k) { return nm[k]; }).join('、'); };
+  // 数据来源标签：[标签, 样式]
+  Fac.sources = function (f) {
+    if (D.fictional) return [['虚构设定', 'info'], ['规模：估算', 'est']];
+    if (f.gen) return [['按片区发展生成', 'info'], ['规模：估算', 'est']];
+    const s = f.src || {};
+    return [[s.pos || '位置：真实地理', 'hist'], [s.year || (f.lmK >= 0 ? '年份：地标落成（史实）' : '年份：史实参考'), 'hist'], ['规模：估算', 'est']];
+  };
+})(window.CM);

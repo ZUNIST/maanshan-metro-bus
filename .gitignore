@@ -1,0 +1,15 @@
+# 构建产物（用 GitHub Releases 分发，不进仓库）
+city-and-metro-bus/dist/
+马鞍山地图-单文件版-*.html
+*.zip
+
+# 依赖与临时文件
+node_modules/
+.cpm*/
+*.log
+*.tmp
+
+# 系统文件
+.DS_Store
+Thumbs.db
+desktop.ini
