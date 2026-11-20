@@ -9,6 +9,10 @@
 
 ## 快速开始
 
+**只想直接玩**：到 [Releases](https://github.com/ZUNIST/maanshan-metro-bus/releases/latest) 下载 `maanshan-metro-bus-v3.39.0.zip`，解压后双击 `启动游戏.bat` 即可（含 `dist/` 与单文件版 HTML）。
+
+**从源码运行**：
+
 双击**仓库根目录**的 `启动游戏.bat`，脚本会自动：
 
 1. 逐个实测可用的 Python（跳过 Windows 商店的占位程序）；
