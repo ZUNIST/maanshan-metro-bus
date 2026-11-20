@@ -2,7 +2,10 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- 手机：锁定页面缩放，交给游戏自己处理双指缩放（tools.js）。浏览器缩放会让 clientX/Y 与画布 CSS 尺寸脱节，落点偏移。 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
   <title>城市与地铁</title>
   <meta name="author" content="VinsonFung">
   <meta name="copyright" content="Copyright © 2026 VinsonFung. Non-commercial use only. All rights reserved.">

@@ -394,6 +394,18 @@
   }
   window.addEventListener('beforeunload', function () { if (!loading && CM.game && !ui.isSaved()) ui.doAutosave(); });
   window.addEventListener('resize', function () { R.resize(); });
+  // 手机/平板：浏览器地址栏收展、横竖屏切换会改变可视高度，visualViewport 也要跟随
+  if (window.visualViewport) window.visualViewport.addEventListener('resize', function () { R.resize(); });
+  // 设备像素比变化（跨屏拖动、系统缩放、插拔外接屏）不一定触发 resize：用 resolution 媒体查询监听后重设画布
+  (function watchDpr() {
+    if (!window.matchMedia) return;
+    var mq = null, attach = function () {
+      if (mq && mq.removeEventListener) mq.removeEventListener('change', onChange);
+      mq = window.matchMedia('(resolution: ' + (window.devicePixelRatio || 1) + 'dppx)');
+      if (mq.addEventListener) mq.addEventListener('change', onChange);
+    }, onChange = function () { R.resize(); attach(); };
+    attach();
+  })();
 
   R.resize();
   R.cam.zoom = R.cam.tz = 17; R.cam.view = 1; R.cam.t = 1; previewCamera(0);

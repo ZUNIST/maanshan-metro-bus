@@ -644,9 +644,21 @@
     this.heatKey = ''; this._cgBmp = null;
     if (this.game) this.renderOverview(); else this.overviewStale = true;
   };
+  // DPI 策略（手机适配）：桌面维持 2 倍上限；触屏设备（pointer:coarse）放宽到 2.5，
+  // 让 DPR=3 的手机文字/线路更锐利。同时给画布物理像素设上限，避免大屏高分屏把 canvas 撑到
+  // 数千万像素而 OOM/卡顿；超出预算时自动回退 DPR，最低不低于 1（保证基本清晰度）。
+  Renderer.prototype.pickDpr = function (w, h) {
+    let dpr = (window.devicePixelRatio || 1);
+    const coarse = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
+    if (!coarse) return Math.min(2, dpr);            // 桌面维持原样：2 倍上限，不设像素预算
+    if (dpr > 2.5) dpr = 2.5;                         // 触屏设备放宽到 2.5，文字/线路更锐利
+    const MAX_PX = 4.2e6;                             // 仅手机：画布物理像素预算，防止高分屏 OOM
+    if (w * h * dpr * dpr > MAX_PX) dpr = Math.max(1, Math.sqrt(MAX_PX / (w * h)));
+    return dpr;
+  };
   Renderer.prototype.resize = function () {
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const w = window.innerWidth, h = window.innerHeight;
+    const w = Math.max(1, window.innerWidth), h = Math.max(1, window.innerHeight);
+    const dpr = this.pickDpr(w, h);
     if (w === this.w && h === this.h && dpr === this.dpr) return;
     this.dropThemeStash();
     this.dpr = dpr; this.w = w; this.h = h;
