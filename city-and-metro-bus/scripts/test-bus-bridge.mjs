@@ -65,9 +65,11 @@ const run = function (sys, pts, year) {
   return { waterM: sg.waterM, offM: bc.offM, types: types, geo: sg };
 };
 
-const br = bridgeWay('沪武高速');
-ok(!!br, '找到跨江桥梁道路（沪武高速·马鞍山长江大桥）', br && Math.round(br.wm / 1000) + ' km 江面');
-ok(br && br.year > 2000, '该桥有通车年份 ' + (br && br.year));
+// v3.42：马鞍山长江大桥在 OSM 里并进「沪武高速」，现在由 bridgeSplits 单独拆出并立年为 2013
+const br = bridgeWay('马鞍山长江大桥') || bridgeWay('沪武高速');
+ok(!!br, '找到跨江桥梁道路（马鞍山长江大桥）', br && Math.round(br.wm / 1000) + ' km 江面');
+ok(br && br.year === 2013, '马鞍山长江大桥立年为 2013（实际 ' + (br && br.year) + '）');
+ok(!bridgeWay('沪武高速') || bridgeWay('沪武高速').year !== 2013, '整条沪武高速仍按自己的年份（2021），没有被桥带跑');
 
 // 1. 桥已通车（2035）：沿桥过江放行
 const later = 2035;
@@ -76,10 +78,12 @@ ok(along && along.waterM > 1000, '沿线确实跨江（江面 ' + Math.round(alo
 ok(along && along.offM < 250, '公交沿桥过江：江面全部在桥上（离桥 ' + Math.round(along.offM) + ' m）');
 ok(along && !along.types.busWater, '公交沿桥过江：不报 busWater');
 
-// 2. 桥还没通车（2000）：同一条线被判无桥
-const early = run('bus', br.pts, 2000);
-ok(early && early.offM > 250, '2000 年该桥尚未通车：判定为无桥（离桥 ' + Math.round(early.offM) + ' m）');
-ok(early && early.types.busWater === 1, '2000 年公交走未通车的桥：报 busWater');
+// 2. 通车前（2012）被判无桥；通车当年（2013）即可过江
+const before = run('bus', br.pts, 2012);
+ok(before && before.offM > 250, '2012 年桥未通：判定为无桥（离桥 ' + Math.round(before.offM) + ' m）');
+ok(before && before.types.busWater === 1, '2012 年公交走未通车的桥：报 busWater');
+const justOpen = run('bus', br.pts, 2013);
+ok(justOpen && !justOpen.types.busWater, '2013 年通车当年：公交即可沿桥过江');
 
 // 3. 离开桥面：沿桥的法线方向平移 1.5 格，同样是「水上漂」，被拦
 const p0 = br.pts[0], p1 = br.pts[br.pts.length - 1];
@@ -109,7 +113,19 @@ const dry = (function () {
 })();
 ok(dry && dry.waterM === 0 && dry.offM === 0, '陆上段：bridgeCoverage 返回 0/0');
 
-// 6. 过桥只收桥面改造费，不按新建桥梁计价
+// 6. 建成年份落在两个剧本上：2000 剧本 2013 年建成，2027 剧本开局即有
+const bi = city.roadGroups.findIndex(function (x) { return x.name === '马鞍山长江大桥'; });
+ok(bi >= 0 && city.roadsBuilt[bi] === 0, '2000 剧本开局：桥还没建');
+city.applyRoads(2012);
+ok(city.roadsBuilt[bi] === 0, '2000 剧本 2012 年：桥仍未建');
+city.applyRoads(2013);
+ok(city.roadsBuilt[bi] === 1, '2000 剧本 2013 年：桥建成');
+C.useMap('ms27');
+const g27 = C.Game.create({ mode: 'free', seed: 1 });
+const bi27 = g27.city.roadGroups.findIndex(function (x) { return x.name === '马鞍山长江大桥'; });
+ok(bi27 >= 0 && g27.city.roadsBuilt[bi27] === 1, '2027 剧本开局：桥已建成');
+
+// 7. 过桥只收桥面改造费，不按新建桥梁计价
 const geoW = along.geo;
 const busCost = M.trackCostFor(geoW, 'surface', later, { sys: 'bus', grade: 'B1', speed: CFG.bus.defaultSpeed }, city);
 const metroCost = M.trackCostFor(geoW, 'surface', later, { sys: 'metro' }, city);

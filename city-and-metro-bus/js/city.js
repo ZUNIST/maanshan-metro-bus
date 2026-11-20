@@ -994,12 +994,27 @@
       if (best != null) return best;
       return cls >= 4 ? shotYear(name) : null;
     };
+    // 桥段拆分（v3.42）：有些跨江大桥在 OSM 里并进了整条高速的名字（马鞍山长江大桥并进了「沪武高速」），
+    // 若按整条高速的通车年份走，桥会晚十几年才出现。数据里用 bridgeSplits 指定：把该道路上位于指定点附近
+    // 的路段单独拆成一个以桥名命名的道路组，再由 bridgeYears 给桥单独立年（见 data_ms.js）。
+    const SPLITS = D.bridgeSplits || [];
+    const splitOf = function (r) {
+      if (!SPLITS.length || !r.name) return null;
+      for (const sp of SPLITS) {
+        if (sp.road && sp.road !== r.name) continue;
+        const p = r.p, rr = sp.r || 8, ax = sp.at[0], ay = sp.at[1];
+        for (let k = 0; k + 1 < p.length; k += 2) if (U.dist(p[k], p[k + 1], ax, ay) <= rr) return sp;
+      }
+      return null;
+    };
     Geo.roads.forEach(function (r) {
       const link = (r.flags & 4) !== 0;
-      const key = r.name && !link ? r.name + '|' + r.cls + '|' + (r.flags & 3) : null;
+      const sp = splitOf(r);
+      const key = sp ? '§' + sp.name + '|' + r.cls + '|' + (r.flags & 3)
+        : (r.name && !link ? r.name + '|' + r.cls + '|' + (r.flags & 3) : null);
       let g = key ? byKey.get(key) : null;
       if (!g) {
-        g = { name: r.name, cls: r.cls, flags: r.flags & 7, ways: [], bbox: [1e9, 1e9, -1e9, -1e9], year: null, notable: false };
+        g = { name: sp ? sp.name : r.name, cls: r.cls, flags: r.flags & 7, ways: [], bbox: [1e9, 1e9, -1e9, -1e9], year: null, notable: false };
         groups.push(g); if (key) byKey.set(key, g);
       }
       g.ways.push(r.p);

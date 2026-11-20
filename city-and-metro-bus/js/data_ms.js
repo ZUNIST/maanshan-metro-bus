@@ -4467,7 +4467,15 @@ centers: [
       '鸠兹路': 2021,
       '大周路': 2021,
     },
-    bridgeYears: {}, bridgeDefaultYear: 2000,
+    // 桥梁年份（v3.42）：马鞍山长江大桥 2013 年 12 月 31 日通车（史实）。
+    // 它在 OSM 里没有独立路名，几何并进了「沪武高速」的几条 way，而沪武高速整条是 2021 年才贯通的，
+    // 所以先用 bridgeSplits 把跨江那段单独拆成「马鞍山长江大桥」，再用 bridgeYears 单独立年——
+    // 2000 年剧本里这座桥 2013 年出现、2014 年起公交可以过江；2027 剧本（派生自本文件）同样生效。
+    bridgeYears: { '马鞍山长江大桥': 2013 }, bridgeDefaultYear: 2000,
+    bridgeSplits: [
+      // at：主跨中点（游戏格）[217.5, 200.85]；r：拆分半径（格），覆盖主跨与两岸引桥
+      { road: '沪武高速', at: [217.5, 200.85], r: 10, name: '马鞍山长江大桥' },
+    ],
     simRoads: [],
     landmarks: [
       Object.assign(atW(31.6480, 118.4560), { id: 'ms_taibai', name: '太白楼', w: 60, d: 50, year: 1730, kind: 'traditional', style: 'palace', h: 18 }),
