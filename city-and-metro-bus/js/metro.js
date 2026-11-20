@@ -318,16 +318,18 @@
   M.clearCaches = function () { geomCache.clear(); };
   M.segGeom = function (net, seg, city) { return M.geomFromControl(M.segControl(net, seg), seg.type, city); };
 
-  // 区间两端坡道长度（米）：按轨面高程差与最大坡度计算
-  M.rampNeed = function (tA, tS, tB) {
-    const lv = CFG.metro.levelM, gmax = CFG.metro.maxGrade;
+  // 区间两端坡道长度（米）：按轨面高程差与最大坡度计算。
+  // L 为线路对象时按制式取坡度/层高（v3.45 有轨电车 maxGrade=6%，地铁 3%）；缺省仍是地铁，兼容旧调用。
+  M.rampNeed = function (tA, tS, tB, line) {
+    const cfg = line ? M.cfgOf(line) : CFG.metro;
+    const lv = cfg.levelM || CFG.metro.levelM, gmax = cfg.maxGrade || CFG.metro.maxGrade;
     return { a: Math.abs(lv[tA] - lv[tS]) / gmax, b: Math.abs(lv[tB] - lv[tS]) / gmax };
   };
   // 段落高度剖面（视觉高度；车站一侧按坡度过渡到车站类型高度）
-  M.heightProfile = function (g, tA, tS, tB) {
+  M.heightProfile = function (g, tA, tS, tB, line) {
     const n = g.pts.length, L = g.lenC, out = new Float32Array(n);
     const hA = M.typeH(tA), hS = M.typeH(tS), hB = M.typeH(tB);
-    const need = M.rampNeed(tA, tS, tB);
+    const need = M.rampNeed(tA, tS, tB, line);
     const plat = CFG.metro.platformHalfM / CFG.CELL_M;
     const ra = Math.min(need.a / CFG.CELL_M, Math.max(0.1, L / 2 - plat)), rb = Math.min(need.b / CFG.CELL_M, Math.max(0.1, L / 2 - plat));
     for (let i = 0; i < n; i++) {
@@ -1228,7 +1230,7 @@
       const A = net.stations[s.a], B = net.stations[s.b];
       if (!A || !B) continue;   // 防御：不完整的区段不参与运营
       const g = M.segGeom(net, s, city);
-      C.segs.set(id, { seg: s, g: g, h: M.heightProfile(g, M.platType(A, s.line), s.type, M.platType(B, s.line)) });
+      C.segs.set(id, { seg: s, g: g, h: M.heightProfile(g, M.platType(A, s.line), s.type, M.platType(B, s.line), net.lines[s.line]) });
     }
     // 共线区段并排显示：同一条轨道上的各线路按线路编号左右错开 shift 个线宽（与区段方向无关）
     const coGroups = new Map();
@@ -1744,7 +1746,9 @@
       if (touched.has(id) || touchedSt.has(s.a) || touchedSt.has(s.b)) {
         // 两端按本线路在该站的站台层计算（天地换乘车站各线路站台层不同）
         const tA = M.platType(A, s.line), tB = M.platType(B, s.line);
-        const need = M.rampNeed(tA, s.type, tB);
+        const need = M.rampNeed(tA, s.type, tB, line);
+        const rampCfg = M.cfgOf(line);
+        const rampLv = rampCfg.levelM || CFG.metro.levelM;
         const avail = g.lenM - 2 * CFG.metro.platformHalfM;
         const req = need.a + need.b;
         if (req > 1 && req > avail) {
@@ -1754,7 +1758,7 @@
           const pick = tB !== s.type ? [s.b, B] : [s.a, A];
           fixes.push({ label: '把「' + pick[1].name + '」本线站台改为' + CFG.metro.typeName[s.type], op: 'platType', station: pick[0], line: s.line, value: s.type });
           fixes.push({ label: '移动车站', op: 'editStation', station: pick[0] });
-          conflict({ type: 'ramp', kind: 'seg', ref: id, x: mid.x, y: mid.y, msg: lbl + '：' + CFG.metro.typeName[tA] + '/' + CFG.metro.typeName[s.type] + '/' + CFG.metro.typeName[tB] + '转换坡道不足（需约 ' + Math.round(req) + ' m，可用 ' + Math.max(0, Math.round(avail)) + ' m）', how: '轨道最大坡度为 ' + Math.round(CFG.metro.maxGrade * 100) + '%，地下与高架之间高差约 ' + (CFG.metro.levelM.elevated - CFG.metro.levelM.underground) + ' m，需要较长坡道。让区间与两端站台采用相同的建设方式，或拉长两站距离；换乘站可以为本线单独设站台层（天地换乘）。', fixes: fixes });
+          conflict({ type: 'ramp', kind: 'seg', ref: id, x: mid.x, y: mid.y, msg: lbl + '：' + CFG.metro.typeName[tA] + '/' + CFG.metro.typeName[s.type] + '/' + CFG.metro.typeName[tB] + '转换坡道不足（需约 ' + Math.round(req) + ' m，可用 ' + Math.max(0, Math.round(avail)) + ' m）', how: M.sysName(line) + '最大坡度为 ' + Math.round((rampCfg.maxGrade || CFG.metro.maxGrade) * 100) + '%，地下与高架之间高差约 ' + (rampLv.elevated - rampLv.underground) + ' m，需要较长坡道。让区间与两端站台采用相同的建设方式，或拉长两站距离；换乘站可以为本线单独设站台层（天地换乘）。', fixes: fixes });
         }
       }
     }
