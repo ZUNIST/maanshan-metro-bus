@@ -1,6 +1,6 @@
 # 交接文档（给下一个 AI 会话）
 
-> 更新时间：2026-11-20 11:10。本文是**会话级交接**：讲清当前做到哪一步、还剩什么、有哪些踩过的坑。
+> 更新时间：2026-11-20 11:20。本文是**会话级交接**：讲清当前做到哪一步、还剩什么、有哪些踩过的坑。
 > 项目的技术细节沉淀在同目录 `交接文档.md`（长期维护），两份配合着读。
 >
 > **v3.44 已完成：手机浏览器 DPI 适配**（在 v3.43 基础上，只改显示层，`SIM_STAMP` 未变、v3.43 存档可续用）。
@@ -9,7 +9,11 @@
 > 420 万物理像素预算（仅触屏生效）；② `index.html` viewport 锁 `user-scalable=no` + 移动 web-app meta；
 > ③ `style.css` 加 `text-size-adjust:100%`；④ `main.js` 加 visualViewport/DPR/resize 三路重绘监听。
 > 验证：`tools/test-mobile-game.mjs`（CDP 模拟 390×844）——DPR3→R.dpr2.5、DPR2→2、桌面不变，无报错，
-> 回归测试全绿。**注意：这些改动尚未 push 到 GitHub，仓库仍停在 v3.43。**
+> 回归测试全绿。
+> **GitHub 已同步**：源码 commit `1f650b5` 已 push 到 `main`（`ZUNIST/maanshan-metro-bus`）；
+> Release `v3.44.0`（https://github.com/ZUNIST/maanshan-metro-bus/releases/tag/v3.44.0）已发布，
+> 挂两个资产：`maanshan-metro-bus-v3.44.0.zip`（完整包 35.06 MB）+ `maanshan-single-file-bus.html`（单文件 33.20 MB）。
+> 发布脚本 `tools/publish-release.mjs`（用 git 缓存凭据调 API，可重跑：会先删该 Release 全部旧资产再上传）。
 >
 > **v3.43 已完成**：沪武高速（原常合高速）马鞍山段**整段**按 2013-12-31 通车——v3.42 只把桥面定 2013、
 > 接线还是 2021，口径不对；现 `roadYearShots['沪武高速']=2013`，桥组用官方全称「马鞍山长江公路大桥」。
