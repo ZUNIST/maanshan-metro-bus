@@ -658,7 +658,13 @@
       if (num) return (/^[A-Za-z]\d/.test(tight) ? tight.slice(0, 3) : num[0]);
       return core.indexOf(' ') > 0 ? core.split(' ').map(function (w) { return w.charAt(0).toUpperCase(); }).join('').slice(0, 3) : tight.slice(0, 3);
     }
-    return Array.from(tight).slice(0, /\d/.test(tight) ? 3 : 2).join('');
+    // 中文（玩家反馈）：徽标要保留「地名前缀 + 制式简称 + 编号」，不再硬截 2–3 字把编号/制式切掉。
+    //   和含公交1号 → 和含公交1；公交101路 → 公交101；和含有轨电车1 → 和含有轨1。
+    // 制式全称缩写仅在徽标显示层，不改线路本名（line.name）与存档；去掉尾部单位字，保留到最后一个数字为止。
+    let zh = tight.replace(/有轨电车/g, '有轨').replace(/公共汽车/g, '公交').replace(/[号路线]+$/, '');
+    const withNum = /^(.*\d)/.exec(zh);   // 贪婪匹配到最后一个数字，丢掉其后的单位字
+    if (withNum) return withNum[1];
+    return Array.from(zh).slice(0, 2).join('') || tight;
   };
   // ---------------- 线路运行速度（v2.5 玩家反馈） ----------------
   // ---------------- 制式（地铁 / 有轨电车 / 公共汽车） ----------------
