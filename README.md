@@ -5,11 +5,11 @@
 
 > **这是社区修改版，不是官方版本。严禁商业使用。**
 >
-> 当前版本 **v3.42.0**（马鞍山长江大桥按史实 2013 年通车；公交可过江但只走已有桥）。
+> 当前版本 **v3.43.0**（沪武高速马鞍山段整段按 2013 年通车；公交可过江但只走已有桥）。
 
 ## 快速开始
 
-**只想直接玩**：到 [Releases](https://github.com/ZUNIST/maanshan-metro-bus/releases/latest) 下载 `maanshan-metro-bus-v3.42.0.zip`，解压后双击 `启动游戏.bat` 即可（含 `dist/` 与单文件版 HTML）。
+**只想直接玩**：到 [Releases](https://github.com/ZUNIST/maanshan-metro-bus/releases/latest) 下载 `maanshan-metro-bus-v3.43.0.zip`，解压后双击 `启动游戏.bat` 即可（含 `dist/` 与单文件版 HTML）。
 
 **从源码运行**：
 

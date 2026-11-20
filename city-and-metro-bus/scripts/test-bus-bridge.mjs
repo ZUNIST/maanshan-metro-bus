@@ -66,10 +66,11 @@ const run = function (sys, pts, year) {
 };
 
 // v3.42：马鞍山长江大桥在 OSM 里并进「沪武高速」，现在由 bridgeSplits 单独拆出并立年为 2013
-const br = bridgeWay('马鞍山长江大桥') || bridgeWay('沪武高速');
-ok(!!br, '找到跨江桥梁道路（马鞍山长江大桥）', br && Math.round(br.wm / 1000) + ' km 江面');
-ok(br && br.year === 2013, '马鞍山长江大桥立年为 2013（实际 ' + (br && br.year) + '）');
-ok(!bridgeWay('沪武高速') || bridgeWay('沪武高速').year !== 2013, '整条沪武高速仍按自己的年份（2021），没有被桥带跑');
+const br = bridgeWay('马鞍山长江公路大桥') || bridgeWay('沪武高速');
+ok(!!br, '找到跨江桥梁道路（马鞍山长江公路大桥）', br && Math.round(br.wm / 1000) + ' km 江面');
+ok(br && br.year === 2013, '马鞍山长江公路大桥立年为 2013（实际 ' + (br && br.year) + '）');
+const hw = bridgeWay('沪武高速');
+ok(hw && hw.year === 2013, '沪武高速马鞍山段整段按 2013 通车（实际 ' + (hw && hw.year) + '）');
 
 // 1. 桥已通车（2035）：沿桥过江放行
 const later = 2035;
@@ -114,7 +115,7 @@ const dry = (function () {
 ok(dry && dry.waterM === 0 && dry.offM === 0, '陆上段：bridgeCoverage 返回 0/0');
 
 // 6. 建成年份落在两个剧本上：2000 剧本 2013 年建成，2027 剧本开局即有
-const bi = city.roadGroups.findIndex(function (x) { return x.name === '马鞍山长江大桥'; });
+const bi = city.roadGroups.findIndex(function (x) { return x.name === '马鞍山长江公路大桥'; });
 ok(bi >= 0 && city.roadsBuilt[bi] === 0, '2000 剧本开局：桥还没建');
 city.applyRoads(2012);
 ok(city.roadsBuilt[bi] === 0, '2000 剧本 2012 年：桥仍未建');
@@ -122,8 +123,15 @@ city.applyRoads(2013);
 ok(city.roadsBuilt[bi] === 1, '2000 剧本 2013 年：桥建成');
 C.useMap('ms27');
 const g27 = C.Game.create({ mode: 'free', seed: 1 });
-const bi27 = g27.city.roadGroups.findIndex(function (x) { return x.name === '马鞍山长江大桥'; });
+const bi27 = g27.city.roadGroups.findIndex(function (x) { return x.name === '马鞍山长江公路大桥'; });
 ok(bi27 >= 0 && g27.city.roadsBuilt[bi27] === 1, '2027 剧本开局：桥已建成');
+
+// 6b. 整段（接线）也是 2013：沪武高速马鞍山段各分组同年建成，且桥的播报交给 2013-12 史实事件，不重复播
+const hwIdx = [];
+city.roadGroups.forEach(function (x, i) { if (x.name === '沪武高速') hwIdx.push(i); });
+ok(hwIdx.length > 0 && hwIdx.every(function (i) { return city.roadGroups[i].year === 2013; }), '沪武高速马鞍山段各分组均按 2013（' + hwIdx.length + ' 组）');
+ok(hwIdx.every(function (i) { return city.roadsBuilt[i] === 1; }), '2013 年沪武高速马鞍山段整段已建成');
+ok(city.roadGroups[bi].notable === false, '桥的通车播报交给 2013-12 的史实事件，不重复播报');
 
 // 7. 过桥只收桥面改造费，不按新建桥梁计价
 const geoW = along.geo;
