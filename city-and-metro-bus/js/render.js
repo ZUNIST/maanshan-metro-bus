@@ -3604,7 +3604,7 @@
     if(cursor&&Number.isFinite(cursor.x+cursor.y)&&T.hover?.kind!=='station'){
       const key=[cursor.x,cursor.y,T.lineChoice,T.buildType,T.chain].join(':');
       if(cache.hoverKey!==key){cache.hoverKey=key;cache.hover=[];
-        const valid=CM.Metro.checkSite(g.city,cursor.x,cursor.y,T.buildType).ok&&!C.stations.some(s=>U.dist(s.x,s.y,cursor.x,cursor.y)*CFG.CELL_M+1e-6<CFG.metro.minSpacingM);
+        const valid=CM.Metro.checkSite(g.city,cursor.x,cursor.y,T.buildType,T.tool==='station'?T.stationSys:T.newLineSys).ok&&!C.stations.some(s=>U.dist(s.x,s.y,cursor.x,cursor.y)*CFG.CELL_M+1e-6<CFG.metro.minSpacingM);
         if(valid){const targets=C.stations.filter((s,i)=>C.serviced[i]&&!C.stationLines[i].has(T.lineChoice));for(const link of model.walkTransferPreview(cursor,targets))cache.hover.push({from:'@cursor',to:link.station,metres:link.metres,path:link.path,hover:true});}
       }hints.push(...cache.hover);
     }

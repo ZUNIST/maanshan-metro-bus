@@ -1129,7 +1129,11 @@
   // 地铁与它换乘必然要从旁边或下方穿过——真要避让时用「地下」表达，不靠「受保护建筑」一刀切。
   const PROT_EXEMPT = { campus: 1, factory: 1, rail: 1 };
   M.protExempt = function (lm) { return !!(lm && PROT_EXEMPT[lm.kind]); };
-  M.checkSite = function (city, x, y, type) {
+  M.checkSite = function (city, x, y, type, sys) {
+    // 公交（v3.40）：站牌立在路边，不需要开挖基坑。现实里老城区、景区门口的公交站随处可见，
+    // 所以「历史城区/景区/机场/受保护建筑只能建地下车站」这几条对公交不成立——
+    // 否则公交线能穿过这些区域，却一站都设不下去。其余（水面、铁路、区域未开放）照常校验。
+    const isBusStop = sys === 'bus';
     // 地图外设施的接驳口（Fac.portal 的注释即为此意：「不受区域开放、水面等选址限制」）：
     // 接驳口本来就开在图缘或邻市的境外地块上（高家冲在南京浦口、铜井在江宁、合肥西缘在西梁山），
     // 若按普通站照常校验，玩家一调整这些接驳口站就会被告知「该区域不开放建设」，线路也永远改不动。
@@ -1148,8 +1152,9 @@
     let gate = null;
     if (rg.scenic) {
       gate = M.scenicGate(city, x, y);
-      if (!gate) return { ok: false, msg: rg.name + '：风景保护区不能设站', how: '把车站移出保护区，轨道可以地下穿越（需支付风景区环境保护费）；景点约 600 m 内可建地下「景区站」。' };
-      if (type !== 'underground') return { ok: false, msg: rg.name + '：风景区内只能建地下车站（「' + gate.name + '」景区站）', how: '把建设方式改为「地下」即可在景点附近设站。' };
+      if (!gate && !isBusStop) return { ok: false, msg: rg.name + '：风景保护区不能设站', how: '把车站移出保护区，轨道可以地下穿越（需支付风景区环境保护费）；景点约 600 m 内可建地下「景区站」。' };
+      if (gate && type !== 'underground' && !isBusStop) return { ok: false, msg: rg.name + '：风景区内只能建地下车站（「' + gate.name + '」景区站）', how: '把建设方式改为「地下」即可在景点附近设站。' };
+      // 公交站牌在景区道路边，不需要基坑，也不受「仅景点 600 m 内」限制（v3.40）
     }
     if (!gate && lockedHere) {
       const yr = city.lockState().year[c];
@@ -1157,17 +1162,17 @@
       if (city.regionOpen[city.lockRegion(c)]) return { ok: false, msg: rg.name + ' 尚未与已开放城区连通' + (yr ? '（参考 ' + yr + ' 年连通）' : ''), how: '与已开放城区连成一片后即可建设。可推进时间等待相邻区域开放，或把车站移到可以建设的范围。' };
       return { ok: false, msg: rg.name + ' 尚未开放（' + city.lockText(c) + '）', how: !yr ? '该区域不开放建设，请把车站移到其他区域。' : '区域开放前不能建设。可推进时间等待开放，或把车站移到已开放区域。' };
     }
-    if (city.heritage && city.heritage[c] && type !== 'underground') return city.heritage[c] === 2 ? { ok: false, msg: '「' + city.heritageName(c) + '」只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到保护范围以外。' } : { ok: false, msg: '历史城区「' + city.heritageName(c) + '」只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到历史城区以外。' };
-    if (rg.hub && type !== 'underground') return { ok: false, msg: rg.name + '照常运营：范围内只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到机场范围以外。' };
+    if (city.heritage && city.heritage[c] && type !== 'underground' && !isBusStop) return city.heritage[c] === 2 ? { ok: false, msg: '「' + city.heritageName(c) + '」只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到保护范围以外。' } : { ok: false, msg: '历史城区「' + city.heritageName(c) + '」只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到历史城区以外。' };
+    if (rg.hub && type !== 'underground' && !isBusStop) return { ok: false, msg: rg.name + '照常运营：范围内只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到机场范围以外。' };
     if (city.lu[c] === LU.AIRPORT) {
       if (!D.airport.buildable) return { ok: false, msg: (D.airport.name || '机场') + '仍在运营（' + D.airport.closeYear + ' 年关闭）', how: '机场关闭前不能建设，请把车站移到机场范围以外。' };
-      if (type !== 'underground') return { ok: false, msg: (D.airport.name || '机场') + '照常运营：范围内只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到机场范围以外。' };
+      if (type !== 'underground' && !isBusStop) return { ok: false, msg: (D.airport.name || '机场') + '照常运营：范围内只能建地下车站', how: '把车站改为地下站（建设方式选「地下」），或移到机场范围以外。' };
     }
     // 地面铁路（v1.9）：地面车站不能压在运营中的铁路上；地下与高架车站可以
     if (type === 'surface' && city.railDist && city.railDist(x, y) < 0.3) return { ok: false, msg: '地面车站不能建在铁路上', how: '把车站移离铁路约 80 m 以上，或改为地下 / 高架车站。' };
     // 受保护建筑（地标级）：地面与高架站不能压在上面，地下站可以——站台在建筑下方、出入口设在周边街区，
     // 与历史城区同一套处理（v3.34：马鞍山南站这类 2026 年新建的枢纽站也在保护名单里，高架线没处可绕）
-    if (city.protectedId[c] > 0 && !M.protExempt(D.landmarks[city.protectedId[c] - 1]) && city.inLandmarkSite(city.protectedId[c] - 1, x, y) && type !== 'underground') {
+    if (city.protectedId[c] > 0 && !M.protExempt(D.landmarks[city.protectedId[c] - 1]) && city.inLandmarkSite(city.protectedId[c] - 1, x, y) && type !== 'underground' && !isBusStop) {
       const nm = D.landmarks[city.protectedId[c] - 1].name;
       return { ok: false, msg: '受保护建筑「' + nm + '」：地面与高架站不能设在这里', how: '把车站改为地下站（站台在建筑下方，出入口设在周边街区），或移到相邻街区——保护建筑周边仍可通过车站出入口服务。' };
     }
@@ -1450,8 +1455,11 @@
       if (!o) {
         res.changes.add.push('新建车站「' + s.name + '」（' + sizeNm(s) + levelsTxt + '）');
         item('construction', '新建车站 ' + s.name, M.stationCostOf(draft, id, s.type, s.size, year), id);
-        if (c >= 0 && city.regions[city.region[c]].scenic) item('construction', '风景区环境保护费 · 车站 ' + s.name, M.envStationFee(s.type, s.size, year), id);
-        { const hf = M.heritageStationFee(city, s.x, s.y, s.type, s.size, year); if (hf > 0) item('construction', (city.heritage[c] === 2 ? '古建保护费 · 车站 ' : '历史城区保护费 · 车站 ') + s.name, hf, id); }
+        // 公交站牌没有土建（v3.40）：不计景区/古建保护费，与「不计拆迁」同一口径
+        const siteL = M.stationLines(draft, id) || [];
+        const busSite = siteL.length > 0 && siteL.every(function (l) { return draft.lines[l] && M.isBus(draft.lines[l]); });
+        if (!busSite && c >= 0 && city.regions[city.region[c]].scenic) item('construction', '风景区环境保护费 · 车站 ' + s.name, M.envStationFee(s.type, s.size, year), id);
+        if (!busSite) { const hf = M.heritageStationFee(city, s.x, s.y, s.type, s.size, year); if (hf > 0) item('construction', (city.heritage[c] === 2 ? '古建保护费 · 车站 ' : '历史城区保护费 · 车站 ') + s.name, hf, id); }
         newSite = true;
       } else {
         const moved = U.dist(s.x, s.y, o.x, o.y) * CFG.CELL_M;
@@ -1520,7 +1528,10 @@
         }
       }
       if (newSite || relocated) {
-        const chk = CM.Fac && CM.Fac.isPortalStation(s) ? { ok: true } : M.checkSite(city, s.x, s.y, s.type);   // 地图外设施的接驳口不受选址限制
+        // 公交站牌不受「只能建地下」限制（v3.40）：本站若只服务公交线路，选址按公交口径校验
+        const siteLs = M.stationLines(draft, id) || [];
+        const siteBusOnly = siteLs.length > 0 && siteLs.every(function (l) { return draft.lines[l] && M.isBus(draft.lines[l]); });
+        const chk = CM.Fac && CM.Fac.isPortalStation(s) ? { ok: true } : M.checkSite(city, s.x, s.y, s.type, siteBusOnly ? 'bus' : undefined);   // 地图外设施的接驳口不受选址限制
         if (!chk.ok) {
           const fixes = [{ label: '移动车站', op: 'editStation', station: id }, { label: o ? '撤回移动' : '删除车站', op: o ? 'restoreStation' : 'removeStation', station: id }];
           conflict({ type: 'site', kind: 'station', ref: id, x: s.x, y: s.y, msg: '车站「' + s.name + '」：' + chk.msg, how: chk.how || '用「修改」工具把车站拖到允许建设的位置，或删除该车站。', fixes: fixes });
@@ -1626,7 +1637,8 @@
           item('demolition', '沿线拆迁 ' + lbl, dm.cost, id);
           res.demolitions.push.apply(res.demolitions, dm.cells);
         }
-        if (g.hillM > 1) item('construction', '风景区环境保护费 · ' + lbl + '（景区内 ' + U.fmtKm(g.hillM) + '）', M.envTrackFee(g, s.type, year), id);
+        // 公交没有土建（v3.40）：不产生景区环境保护费，也不计入保护区加固
+        if (g.hillM > 1 && !M.isBus(line)) item('construction', '风景区环境保护费 · ' + lbl + '（景区内 ' + U.fmtKm(g.hillM) + '）', M.envTrackFee(g, s.type, year), id);
         const gd = M.speedGrade(line);
         if (gd.track > 0) item('construction', '高速线路附加（' + gd.kmh + ' km/h）· ' + lbl, g.lenM / 1000 * C.trackPerKm[s.type] * gd.track * ci, id);
       }
@@ -1646,10 +1658,14 @@
         if ((g.waterM || 0) > maxW) conflict({ type: 'tramWater', kind: 'seg', ref: id, x: g.pts[0][0], y: g.pts[0][1], msg: lbl + '：跨江段长约 ' + U.fmtKm(g.waterM) + '，超过' + M.sysName(line) + ' ' + U.fmtKm(maxW) + ' 的上限', how: M.sysName(line) + '跨江要保持较低的运行速度，特大桥隧在工程上也不成立。改线到更窄的江面、改用高架短桥，或把这段改由地铁承担。', fixes: [editSeg] });
       }
       if (g.outside) conflict({ type: 'outside', kind: 'seg', ref: id, x: A.x, y: A.y, msg: lbl + '：超出地图范围', how: '把转弯点或车站移回地图内。', fixes: [editSeg] });
-      if (g.hillM > 1 && s.type !== 'underground') conflict({ type: 'hill', kind: 'seg', ref: id, x: g.hillHit[0], y: g.hillHit[1], msg: lbl + '：穿过' + g.hillHit[2] + '，风景区禁止地面/高架轨道', how: '风景区内只能以隧道穿越。把这段轨道改为地下即可（会增加山体隧道费用），或调整线形绕开。', fixes: [toUnder, editSeg] });
-      if ((g.herM > 1 || g.guardM > 1) && s.type !== 'underground' && g.herHit && !s.inherited && touched.has(id)) conflict({ type: 'protected', kind: 'seg', ref: id, x: g.herHit[0], y: g.herHit[1], msg: g.herHit[3] === 2 ? lbl + '：地面/高架轨道将穿过「' + g.herHit[2] + '」，这里只能走地下' : lbl + '：地面/高架轨道将穿过历史城区「' + g.herHit[2] + '」，这里只能走地下', how: g.herHit[3] === 2 ? '改为地下线，或绕开保护范围。' : '改为地下线，或绕开历史城区。' });
+      // 风景/文保/受保护建筑这三类「只能走地下」的判定只对铺轨线路成立。
+      // 公交是虚拟线路（v3.29 起的设定，v3.40 补齐这里的漏项）：车走城市道路、路边设站，
+      // 既不需要开挖山体、也不拆历史建筑，因此公交段一律豁免——否则公交只能地面运行，
+      // 一进景区或历史城区就永远解不开冲突，玩家会看到「有碰撞体积、必须拆迁」的效果。
+      if (!M.isBus(line) && g.hillM > 1 && s.type !== 'underground') conflict({ type: 'hill', kind: 'seg', ref: id, x: g.hillHit[0], y: g.hillHit[1], msg: lbl + '：穿过' + g.hillHit[2] + '，风景区禁止地面/高架轨道', how: '风景区内只能以隧道穿越。把这段轨道改为地下即可（会增加山体隧道费用），或调整线形绕开。', fixes: [toUnder, editSeg] });
+      if (!M.isBus(line) && (g.herM > 1 || g.guardM > 1) && s.type !== 'underground' && g.herHit && !s.inherited && touched.has(id)) conflict({ type: 'protected', kind: 'seg', ref: id, x: g.herHit[0], y: g.herHit[1], msg: g.herHit[3] === 2 ? lbl + '：地面/高架轨道将穿过「' + g.herHit[2] + '」，这里只能走地下' : lbl + '：地面/高架轨道将穿过历史城区「' + g.herHit[2] + '」，这里只能走地下', how: g.herHit[3] === 2 ? '改为地下线，或绕开保护范围。' : '改为地下线，或绕开历史城区。' });
       // 与 locked / rail 一致：开局接管的既有线网本来就是按真实线形画的，未触及的继承区间不报常驻冲突
-      if (g.protM > 1 && s.type !== 'underground' && (!s.inherited || touched.has(id))) conflict({ type: 'protected', kind: 'seg', ref: id, x: g.protHit[0], y: g.protHit[1], msg: lbl + '：地面/高架轨道将穿过受保护建筑「' + g.protNames.join('、') + '」', how: '历史建筑和重要地标不能拆除。改为地下从下方穿越（需加固费用），或调整线形绕开。', fixes: [toUnder, editSeg] });
+      if (!M.isBus(line) && g.protM > 1 && s.type !== 'underground' && (!s.inherited || touched.has(id))) conflict({ type: 'protected', kind: 'seg', ref: id, x: g.protHit[0], y: g.protHit[1], msg: lbl + '：地面/高架轨道将穿过受保护建筑「' + g.protNames.join('、') + '」', how: '历史建筑和重要地标不能拆除。改为地下从下方穿越（需加固费用），或调整线形绕开。', fixes: [toUnder, editSeg] });
       // 通往地图外设施接驳口的区段（机场线等）可以穿过尚未开放的区域（区段上不能设站，车站仍须建在已开放区域）。
       // v3.34：接驳口区段穿过「永久不开放」的境外同样放行——接驳口本身就在境外（高家冲在南京浦口、铜井在江宁），
       // 不放行等于要求玩家把接驳口搬回图内，而这些线在原图里本来就是过境段。过境段仍然不设站（车站由 checkSite 把关）。
@@ -1718,7 +1734,9 @@
           }
           worst = Math.max(worst, best);
         }
-        const turnMax = ls.every(function (s) { return s.curve === 'arc'; }) ? CFG.metro.maxTurnArcDeg : CFG.metro.maxTurnAtStationDeg;
+        // 转向上限按制式取（v3.40）：公交在路口 90° 拐弯是常态，cfg.bus 放宽到 120°
+        const tl = M.cfgOf(draft.lines[lid]);
+        const turnMax = ls.every(function (s) { return s.curve === 'arc'; }) ? (tl.maxTurnArcDeg || CFG.metro.maxTurnArcDeg) : (tl.maxTurnAtStationDeg || CFG.metro.maxTurnAtStationDeg);
         if (worst > turnMax) {
           const ln = draft.lines[lid];
           conflict({ type: 'turn', kind: 'station', ref: sid, x: S.x, y: S.y, msg: (ln ? ln.name : '') + ' 在车站「' + S.name + '」前后转向约 ' + Math.round(worst) + '°（最大 ' + turnMax + '°）', how: '站台是一段直线，列车不能在车站处急转。把车站移到转弯之前或之后，或在车站两侧增加转弯点，让线路先直行进出车站再转弯。', fixes: [{ label: '移动车站', op: 'editStation', station: sid }].concat(ls.filter(function (s) { return (s.pts || []).length; }).slice(0, 1).map(function (s) { return { label: '调整线形', op: 'editSeg', seg: s.id }; })) });

@@ -274,7 +274,7 @@
     return { f: best.f, x: P.x, y: P.y, sid: sid };
   };
   // 选址检查（接驳口不受限制）
-  Tools.prototype.siteCheck = function (w) { return w.portal ? { ok: true } : M.checkSite(this.game().city, w.x, w.y, this.buildType); };
+  Tools.prototype.siteCheck = function (w) { return w.portal ? { ok: true } : M.checkSite(this.game().city, w.x, w.y, this.buildType, this.tool === 'station' ? this.stationSys : this.newLineSys); };
   Tools.prototype.stationOpts = function (w) {
     // 带上当前制式，供 M.addStation 选择站名偏好（v3.28：电车偏好社区/学校名）
     const o = { size: this.stationSize, type: this.buildType, sys: this.tool === 'station' ? this.stationSys : this.newLineSys };
@@ -353,7 +353,7 @@
       }
     } else if (this.tool === 'station') {
       if (seg) tip = { title: '在轨道上插入车站', lines: ['新车站将成为该线路的一站'] };
-      else if (!st) { const chk = M.checkSite(g.city, w.x, w.y, this.buildType); tip = chk.ok ? null : (this.lockTip(w, true) || { title: '不能在此建站', lines: [chk.msg], bad: true }); }
+      else if (!st) { const chk = M.checkSite(g.city, w.x, w.y, this.buildType, this.tool === 'station' ? this.stationSys : this.newLineSys); tip = chk.ok ? null : (this.lockTip(w, true) || { title: '不能在此建站', lines: [chk.msg], bad: true }); }
     } else if (this.tool === 'line') {
       tip = this.linePreviewTip(w, st, seg, mod);
     } else if (this.tool === 'measure') {
@@ -564,10 +564,10 @@
         return { title: (lid === 'new' ? '从「' + net.stations[st].name + '」开始新线路' : '延长 ' + net.lines[lid].name), lines: [lid === 'new' ? (M.stationLines(net, st).length ? '与已有线路在此换乘' : '依次点击车站或空地连线') : '从端点「' + net.stations[st].name + '」继续绘制', 'Shift+点击添加转弯点；右键结束'] };
       }
       if (seg) return { title: '在轨道上新建换乘站并开始新线路', lines: [] };
-      const chk = M.checkSite(g.city, w.x, w.y, this.buildType);
+      const chk = M.checkSite(g.city, w.x, w.y, this.buildType, this.tool === 'station' ? this.stationSys : this.newLineSys);
       if (!chk.ok) return { title: '不能在此建站', lines: [chk.msg], bad: true };
       const c0 = g.city.cellAt(w.x, w.y), first = ['点击线路端点车站则延长该线路'];
-      if (c0 >= 0 && g.city.regions[g.city.region[c0]].scenic) first.push(this.envNote(0, M.envStationFee(this.buildType, this.stationSize, g.clock.y)));
+      if (c0 >= 0 && g.city.regions[g.city.region[c0]].scenic && this.newLineSys !== 'bus') first.push(this.envNote(0, M.envStationFee(this.buildType, this.stationSize, g.clock.y)));
       { const hf = M.heritageStationFee(g.city, w.x, w.y, this.buildType, this.stationSize, g.clock.y); if (hf > 0) first.push((g.city.heritage[g.city.cellAt(w.x, w.y)] === 2 ? '古建保护范围：车站加收保护费约 ' : '历史城区：车站加收保护费约 ') + U.fmtMoney(hf)); }
       return { title: '点击放置第一座车站（新线路）', lines: first };
     }
@@ -577,12 +577,16 @@
     if (st) { end = [net.stations[st].x, net.stations[st].y]; newSt = false; }
     const pv = this.previewGeom(end, !mod && st ? st : null);
     const geo = pv.geo;
+    // 公交是虚拟线路（v3.40）：车走城市道路、路边设站，不铺轨、不拆迁、不进隧道，
+    // 因此不做「景区/历史城区/受保护建筑只能走地下」的拦截，也不计景区环境保护费。
+    const curLine = this.lineChoice && this.net().lines[this.lineChoice];
+    const busNow = curLine ? M.isBus(curLine) : (this.newLineSys === 'bus');
     let cost = pv.host ? 0 : M.trackCost(geo, this.buildType, g.clock.y);
     if (newSt && !mod && !seg) cost += M.stationCost(this.buildType, this.stationSize, g.clock.y);
     // 风景区环境保护费（v2.2）：与施工方案同一算法计入预览造价，并单独列出
     const endC = g.city.cellAt(end[0], end[1]);
-    const envT = pv.host ? 0 : M.envTrackFee(geo, this.buildType, g.clock.y);
-    const envS = newSt && !mod && !seg && endC >= 0 && g.city.regions[g.city.region[endC]].scenic ? M.envStationFee(this.buildType, this.stationSize, g.clock.y) : 0;
+    const envT = (pv.host || busNow) ? 0 : M.envTrackFee(geo, this.buildType, g.clock.y);
+    const envS = (!busNow && newSt && !mod && !seg && endC >= 0 && g.city.regions[g.city.region[endC]].scenic) ? M.envStationFee(this.buildType, this.stationSize, g.clock.y) : 0;
     const herS = newSt && !mod && !seg ? M.heritageStationFee(g.city, end[0], end[1], this.buildType, this.stationSize, g.clock.y) : 0;
     cost += envT + envS + herS;
     const lines = pv.host ? ['沿用 ' + (net.lines[pv.host.line] ? net.lines[pv.host.line].name : '') + ' 的既有轨道（共线运营），不另收建设费', '需要单独建轨道时，先 Shift+点击加一个转弯点']
@@ -590,17 +594,19 @@
     let bad = false;
     if (mod) lines.unshift('松开 Shift 点击 = 连接；当前为添加转弯点');
     const ty = pv.host ? pv.host.type : this.buildType;
-    if (geo.hillM > 1 && ty !== 'underground') { lines.push('经过山地风景区：仅可地下穿越'); bad = true; }
-    if (!pv.host && (geo.herM > 1 || geo.guardM > 1)) { if (ty !== 'underground') { lines.push((geo.herHit && geo.herHit[3] === 2 ? '经过「' : '经过历史城区「') + (geo.herHit ? geo.herHit[2] : '') + '」：只能走地下'); bad = true; } else lines.push((geo.herHit && geo.herHit[3] === 2 ? '穿过「' : '穿过历史城区「') + (geo.herHit ? geo.herHit[2] : '') + '」' + U.fmtKm((geo.herM || 0) + (geo.guardM || 0)) + '：隧道要避开古建基础，造价已提高'); }
+    if (!busNow && geo.hillM > 1 && ty !== 'underground') { lines.push('经过山地风景区：仅可地下穿越'); bad = true; }
+    if (!busNow && !pv.host && (geo.herM > 1 || geo.guardM > 1)) { if (ty !== 'underground') { lines.push((geo.herHit && geo.herHit[3] === 2 ? '经过「' : '经过历史城区「') + (geo.herHit ? geo.herHit[2] : '') + '」：只能走地下'); bad = true; } else lines.push((geo.herHit && geo.herHit[3] === 2 ? '穿过「' : '穿过历史城区「') + (geo.herHit ? geo.herHit[2] : '') + '」' + U.fmtKm((geo.herM || 0) + (geo.guardM || 0)) + '：隧道要避开古建基础，造价已提高'); }
     if (envT + envS > 0) lines.push(this.envNote(envT ? geo.hillM : 0, envT + envS, envS > 0));
-    if (geo.protM > 1 && ty !== 'underground') { lines.push('穿越受保护建筑：' + geo.protNames.join('、')); bad = true; }
+    if (!busNow && geo.protM > 1 && ty !== 'underground') { lines.push('穿越受保护建筑：' + geo.protNames.join('、')); bad = true; }
     const toPortal = CM.Fac.isPortalStation(A) || (st && CM.Fac.isPortalStation(net.stations[st]));   // 接驳口区段可穿过尚未开放的区域（含境外：接驳口本身就在邻市）
     const lockedHit = geo.locked.filter(function (l) { return !toPortal; });
     if (lockedHit.length) { lines.push('经过未开放区域：' + lockedHit[0].name); bad = true; }
     const minRdraw = this.drawMinRadius(); if (!mod && isFinite(geo.minRadiusM) && geo.minRadiusM < minRdraw) { lines.push('弯道过急：半径约 ' + Math.round(geo.minRadiusM) + ' m（最小 ' + minRdraw + ' m），可 Shift+点击加转弯点'); bad = true; }
-    const turnMax = this.curveMode === 'smooth' ? CFG.metro.maxTurnArcDeg : CFG.metro.maxTurnAtStationDeg;
+    // 转向上限按制式取（v3.40）：公交路口 90° 拐弯是常态，用 cfg.bus 的 120°
+    const turnCfg = curLine ? M.cfgOf(curLine) : (this.newLineSys === 'bus' ? CFG.bus : CFG.metro);
+    const turnMax = this.curveMode === 'smooth' ? turnCfg.maxTurnArcDeg : turnCfg.maxTurnAtStationDeg;
     if (!mod && pv.turn > turnMax) { lines.push('在「' + A.name + '」处转向约 ' + Math.round(pv.turn) + '°（最大 ' + turnMax + '°）'); bad = true; }
-    if (newSt && !mod && !st && !seg) { const chk = M.checkSite(g.city, w.x, w.y, this.buildType); if (!chk.ok) { lines.push(chk.msg); bad = true; } }
+    if (newSt && !mod && !st && !seg) { const chk = M.checkSite(g.city, w.x, w.y, this.buildType, this.tool === 'station' ? this.stationSys : this.newLineSys); if (!chk.ok) { lines.push(chk.msg); bad = true; } }
     return { title: st ? '连接到「' + net.stations[st].name + '」' : (seg ? '连接并在该轨道上新建换乘站' : (mod ? '添加转弯点' : '新建车站并连接')), lines: lines, bad: bad };
   };
   // 预览：与正式建设相同的线形规则（站台直线段、与既有线路切线连续）
@@ -1182,7 +1188,7 @@
     }
     // 绘线的第一座车站：还没有起点时，光标处即将放下的车站
     if (this.tool === 'line' && !this.chain && cur && !this.drag && !(this.hover && this.hover.kind === 'station')) {
-      const hb = R.trackH(this.buildType), q = R.P(cur.x, cur.y, hb), ok = this.portalHover || (this.hover && this.hover.kind === 'seg') ? true : M.checkSite(g.city, cur.x, cur.y, this.buildType).ok;
+      const hb = R.trackH(this.buildType), q = R.P(cur.x, cur.y, hb), ok = this.portalHover || (this.hover && this.hover.kind === 'seg') ? true : M.checkSite(g.city, cur.x, cur.y, this.buildType, this.tool === 'station' ? this.stationSys : this.newLineSys).ok;
       ctx.strokeStyle = ok ? this.nextLineColor() : '#d63031'; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.beginPath(); ctx.arc(q.x, q.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
       this.drawNameTag(ctx, R, cur.x, cur.y, hb, !ok);
@@ -1192,7 +1198,7 @@
     // 建站预览
     if (this.tool === 'station' && cur && !this.hover) {
       const q = R.P(cur.x, cur.y, R.trackH(this.buildType));
-      const ok = this.portalHover ? true : M.checkSite(g.city, cur.x, cur.y, this.buildType).ok;
+      const ok = this.portalHover ? true : M.checkSite(g.city, cur.x, cur.y, this.buildType, this.tool === 'station' ? this.stationSys : this.newLineSys).ok;
       this.drawNameTag(ctx, R, cur.x, cur.y, R.trackH(this.buildType), !ok);
       ctx.strokeStyle = ok ? '#1e88e5' : '#d63031'; ctx.lineWidth = 2; ctx.fillStyle = 'rgba(255,255,255,0.8)';
       ctx.beginPath(); ctx.arc(q.x, q.y, 7, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
