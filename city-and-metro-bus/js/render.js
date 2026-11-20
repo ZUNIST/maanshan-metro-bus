@@ -5442,13 +5442,20 @@
         labeledSt.push({ n: nrm, x: s.x, y: s.y });
       }
     }
+    // v3.45：同名同点判定——去掉尾部「站」把「XX站」与「XX」视为同一地点，容 4 格偏差
+    // （容纳地标/设施/车站之间 1~2 格的数据位置抖动）。放在 render 内、不进 SIM_STAMP，旧存档不失效。
+    const samePlace = function (n1, x1, y1, n2, x2, y2) {
+      const a = String(n1 == null ? '' : n1).replace(/站$/, ''), b = String(n2 == null ? '' : n2).replace(/站$/, '');
+      return a === b && U.dist(x1, y1, x2, y2) < 4;
+    };
     // 普通地标与非枢纽设施，避让已排好的枢纽及地铁站名。
+    // v3.45：同名同点的「地标 + 设施点」只标一次——和县陋室公园/镇淮楼/和县体育中心等地标层与设施层
+    // 各存一份（同名同坐标、不同来源），放大后画成两个标签。用 shownPlaces 统一去重（枢纽/站名也计入）。
+    const shownPlaces = labeledSt.concat(hubShown.map(function (h) { return { n: h.name, x: h.x, y: h.y }; }));
     for (const it of mapLabels) {
       if (it.hub) continue;
-      // v3.37：站名已标出时，同名同点的普通地标不再重复（如「当涂东站」landmark 与「当涂东」车站相距 1.8 格）
-      const nm = String(it.name).replace(/站$/, '');
-      if (labeledSt.some(function (s) { return s.n === nm && U.dist(s.x, s.y, it.x, it.y) < 4; })) continue;
-      drawMapLabel(it);
+      if (shownPlaces.some(function (s) { return samePlace(s.n, s.x, s.y, it.name, it.x, it.y); })) continue;
+      if (drawMapLabel(it)) shownPlaces.push({ n: it.name, x: it.x, y: it.y });
     }
     // 道路名
     if (z >= 22 && this.layer === 'none' && mapOn) {
