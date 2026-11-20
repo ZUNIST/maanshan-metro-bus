@@ -243,7 +243,10 @@
       fMax: 40,                   // 公交可密到 1.5 分钟一班
       allowLevels: ['surface'],   // 公交只许地面站（与 surfaceOnly 一致，供工具条/预览读取）
       roadNearM: 40, roadFarM: 240, ownMinRunM: 500, ownTrackFactor: 1.45,
-      crossWaterMaxM: 3000, crossWaterKmh: 30,
+      // 跨江（v3.41）：公交可以过江，但必须沿已有的桥/隧道——不再用长度上限判定，
+      // 改由 metro.js 的 M.bridgeCoverage 逐点检查「120 m 内有没有已通车的跨水桥梁道路」。
+      // 走既有桥只收桥面改造费（bridgeLanePerKm，万元/km：划公交道、加固、设站台），不收新建桥梁费。
+      crossWaterMaxM: 3000, crossWaterKmh: 30, bridgeLanePerKm: 80,
       laneTake: 0.85,             // 兜底占路系数（当等级未给 laneTake 时用）；实际按 grades[].laneTake 分档
       fareDefault: { mode: 'flat', flat: 2 },
       fareDist: { km0: 5, step: 5, inc: 0.5, cap: 2.0 },

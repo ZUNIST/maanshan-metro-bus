@@ -1381,7 +1381,9 @@
     if (!M.isLight(line)) return M.trackCost(g, type, year);
     const cfg = M.cfgOf(line), gd = M.sysGrade(line) || { track: cfg.grades ? cfg.grades[0].track : 2200 };
     const ci = costIndex(year), C = CFG.cost, mode = M.segMode(g, city, line);
-    let v = g.lenM / 1000 * gd.track + g.waterM / 1000 * C.riverPerKm[type];
+    let v = g.lenM / 1000 * gd.track;
+    // 跨江（v3.41）：公交走的是既有桥，只算桥面公交道改造费，不按新建桥梁单价计
+    v += g.waterM / 1000 * (M.isBus(line) ? (cfg.bridgeLanePerKm || 80) : C.riverPerKm[type]);
     if (mode === 'own') v *= cfg.ownTrackFactor || 1.45;
     // 与地面铁路平交：轻轨类可以平交（地铁不行），每处铺道口、做信号与防护，按 0.15 km 的档位单价计
     if (type === 'surface' && g.railS > 0) v += g.railS * 0.15 * gd.track;
@@ -1401,6 +1403,42 @@
   // 绘线、建站预览与施工方案用同一算法
   M.envTrackFee = function (g, type, year) { return g.hillM > 1 ? g.hillM / 1000 * CFG.cost.trackPerKm[type] * (CFG.cost.envTrack || 0) * costIndex(year) : 0; };
   M.envStationFee = function (type, size, year) { return M.stationCost(type, size, year) * (CFG.cost.envStation || 0); };
+  // 公交跨江（v3.41）：车只能走已有的桥（或隧道）过江，不能「水上漂」。
+  // 判定：沿公交段的江面部分逐点取中点，看 120 m 内有没有「已建成、且自己确实跨水」的桥梁道路——
+  // 桥梁要求道路带 bridge 标记（flags & 1）且相邻两顶点本身被 city.crossesRiver 判为过水，
+  // 这样城市立交、跨线高架不会被误当成过江桥。返回 { waterM, offM, offHit }。
+  const BRIDGE_TOL_M = 120;
+  M.bridgeCoverage = function (city, g, year) {
+    const out = { waterM: 0, offM: 0, offHit: null };
+    if (!(g && g.waterM > 1) || !city.roadWayBk || !CM.Geo.query) return out;
+    const pts = g.pts, cum = g.cum, n = pts.length, tolC = BRIDGE_TOL_M / CFG.CELL_M;
+    const distSeg = function (px, py, ax, ay, bx, by) {
+      const dx = bx - ax, dy = by - ay, L2 = dx * dx + dy * dy;
+      let t = L2 > 0 ? ((px - ax) * dx + (py - ay) * dy) / L2 : 0;
+      t = t < 0 ? 0 : (t > 1 ? 1 : t);
+      return Math.hypot(px - (ax + dx * t), py - (ay + dy * t));
+    };
+    for (let i = 0; i + 1 < n; i++) {
+      const mx = (pts[i][0] + pts[i + 1][0]) / 2, my = (pts[i][1] + pts[i + 1][1]) / 2;
+      if (city.waterDistAt(mx, my) >= 0) continue;
+      const ds = (cum[i + 1] - cum[i]) * CFG.CELL_M;
+      out.waterM += ds;
+      let onBridge = false;
+      for (const k of CM.Geo.query(city.roadWayBk, mx - tolC, my - tolC, mx + tolC, my + tolC)) {
+        const w = city.roadWays[k], grp = city.roadGroups[w.g];
+        if (!grp || !(grp.flags & 1)) continue;                                  // 只看桥梁
+        if (grp.year != null && year != null && grp.year > year) continue;       // 尚未通车
+        const p = w.p;
+        for (let q = 0; q + 3 < p.length; q += 2) {
+          if (distSeg(mx, my, p[q], p[q + 1], p[q + 2], p[q + 3]) > tolC) continue;
+          if (city.crossesRiver(p[q], p[q + 1], p[q + 2], p[q + 3])) { onBridge = true; break; }
+        }
+        if (onBridge) break;
+      }
+      if (!onBridge) { out.offM += ds; if (!out.offHit) out.offHit = [mx, my]; }
+    }
+    return out;
+  };
   // 跨越铁路的附加费用（基年价格）：地下线下穿地面铁路、高架线上跨地面或高架铁路，每处按等效长度计
   M.railCrossN = function (g, type) { return type === 'underground' ? (g.railS || 0) : (type === 'elevated' ? (g.railS || 0) + (g.railV || 0) : 0); };
   M.railCrossCost = function (g, type) {
@@ -1652,10 +1690,17 @@
           how: '公交车直接走城市道路、路边设站，没有地下隧道或高架桥。把这段改为地面线即可。',
           fixes: [{ label: '改为地面线', op: 'segType', seg: id, value: 'surface' }] });
       }
-      // 轻轨类：跨江按独立路基计、单段水面不超过该制式上限并限速（公交上限更宽松）
+      // 轻轨类：跨江按独立路基计、单段水面不超过该制式上限并限速
+      // 公交不同（v3.41）：公交车可以过江，但只能走已有的桥——按桥梁覆盖率判定，不再用长度上限。
       if (M.isLight(line)) {
         const lcfg = M.cfgOf(line), maxW = lcfg.crossWaterMaxM || 1500;
-        if ((g.waterM || 0) > maxW) conflict({ type: 'tramWater', kind: 'seg', ref: id, x: g.pts[0][0], y: g.pts[0][1], msg: lbl + '：跨江段长约 ' + U.fmtKm(g.waterM) + '，超过' + M.sysName(line) + ' ' + U.fmtKm(maxW) + ' 的上限', how: M.sysName(line) + '跨江要保持较低的运行速度，特大桥隧在工程上也不成立。改线到更窄的江面、改用高架短桥，或把这段改由地铁承担。', fixes: [editSeg] });
+        if (M.isBus(line)) {
+          const bc = M.bridgeCoverage(city, g, year);
+          if (bc.offM > 250) {
+            const hit = bc.offHit || g.pts[0];
+            conflict({ type: 'busWater', kind: 'seg', ref: id, x: hit[0], y: hit[1], msg: lbl + '：公交跨江约 ' + U.fmtKm(bc.offM) + ' 的江面没有桥（江面共 ' + U.fmtKm(bc.waterM) + '）', how: '公交车只能走已有的桥或隧道过江（马鞍山长江大桥、马钢公路桥这类）。把转弯点拖到桥上沿桥过江，或让这段改由地铁 / 有轨电车承担。', fixes: [editSeg] });
+          }
+        } else if ((g.waterM || 0) > maxW) conflict({ type: 'tramWater', kind: 'seg', ref: id, x: g.pts[0][0], y: g.pts[0][1], msg: lbl + '：跨江段长约 ' + U.fmtKm(g.waterM) + '，超过' + M.sysName(line) + ' ' + U.fmtKm(maxW) + ' 的上限', how: M.sysName(line) + '跨江要保持较低的运行速度，特大桥隧在工程上也不成立。改线到更窄的江面、改用高架短桥，或把这段改由地铁承担。', fixes: [editSeg] });
       }
       if (g.outside) conflict({ type: 'outside', kind: 'seg', ref: id, x: A.x, y: A.y, msg: lbl + '：超出地图范围', how: '把转弯点或车站移回地图内。', fixes: [editSeg] });
       // 风景/文保/受保护建筑这三类「只能走地下」的判定只对铺轨线路成立。

@@ -581,7 +581,10 @@
     // 因此不做「景区/历史城区/受保护建筑只能走地下」的拦截，也不计景区环境保护费。
     const curLine = this.lineChoice && this.net().lines[this.lineChoice];
     const busNow = curLine ? M.isBus(curLine) : (this.newLineSys === 'bus');
-    let cost = pv.host ? 0 : M.trackCost(geo, this.buildType, g.clock.y);
+    // 造价按制式计（v3.41）：公交/电车的线路单价远低于地铁，以前这里一律用 M.trackCost 会高估很多
+    const pvSys = curLine ? (curLine.sys || 'metro') : (this.newLineSys || 'metro');
+    const pvLine = curLine || { sys: pvSys, speed: this.newLineSpeed || (pvSys === 'metro' ? 80 : CFG[pvSys].defaultSpeed) };
+    let cost = pv.host ? 0 : M.trackCostFor(geo, this.buildType, g.clock.y, pvLine, g.city);
     if (newSt && !mod && !seg) cost += M.stationCost(this.buildType, this.stationSize, g.clock.y);
     // 风景区环境保护费（v2.2）：与施工方案同一算法计入预览造价，并单独列出
     const endC = g.city.cellAt(end[0], end[1]);
@@ -590,7 +593,7 @@
     const herS = newSt && !mod && !seg ? M.heritageStationFee(g.city, end[0], end[1], this.buildType, this.stationSize, g.clock.y) : 0;
     cost += envT + envS + herS;
     const lines = pv.host ? ['沿用 ' + (net.lines[pv.host.line] ? net.lines[pv.host.line].name : '') + ' 的既有轨道（共线运营），不另收建设费', '需要单独建轨道时，先 Shift+点击加一个转弯点']
-      : ['长度 ' + U.fmtKm(geo.lenM) + (geo.waterM > 1 ? '，' + (this.buildType === 'underground' ? '越江隧道 ' : '跨江桥梁 ') + U.fmtKm(geo.waterM) : '') + ' · 约 ' + U.fmtMoney(cost)];
+      : ['长度 ' + U.fmtKm(geo.lenM) + (geo.waterM > 1 ? '，' + (busNow ? '过桥 ' : (this.buildType === 'underground' ? '越江隧道 ' : '跨江桥梁 ')) + U.fmtKm(geo.waterM) : '') + ' · 约 ' + U.fmtMoney(cost)];
     let bad = false;
     if (mod) lines.unshift('松开 Shift 点击 = 连接；当前为添加转弯点');
     const ty = pv.host ? pv.host.type : this.buildType;
@@ -598,6 +601,12 @@
     if (!busNow && !pv.host && (geo.herM > 1 || geo.guardM > 1)) { if (ty !== 'underground') { lines.push((geo.herHit && geo.herHit[3] === 2 ? '经过「' : '经过历史城区「') + (geo.herHit ? geo.herHit[2] : '') + '」：只能走地下'); bad = true; } else lines.push((geo.herHit && geo.herHit[3] === 2 ? '穿过「' : '穿过历史城区「') + (geo.herHit ? geo.herHit[2] : '') + '」' + U.fmtKm((geo.herM || 0) + (geo.guardM || 0)) + '：隧道要避开古建基础，造价已提高'); }
     if (envT + envS > 0) lines.push(this.envNote(envT ? geo.hillM : 0, envT + envS, envS > 0));
     if (!busNow && geo.protM > 1 && ty !== 'underground') { lines.push('穿越受保护建筑：' + geo.protNames.join('、')); bad = true; }
+    // 公交跨江（v3.41）：可以过江，但必须沿已有的桥；没有桥就在预览里直接拦下
+    if (busNow && geo.waterM > 1) {
+      const bc = M.bridgeCoverage(g.city, geo, g.clock.y);
+      if (bc.offM > 250) { lines.push('跨江未沿已有桥梁：约 ' + U.fmtKm(bc.offM) + ' 的江面没有桥'); bad = true; }
+      else lines.push('跨江沿已有桥梁（' + U.fmtKm(bc.waterM) + '）');
+    }
     const toPortal = CM.Fac.isPortalStation(A) || (st && CM.Fac.isPortalStation(net.stations[st]));   // 接驳口区段可穿过尚未开放的区域（含境外：接驳口本身就在邻市）
     const lockedHit = geo.locked.filter(function (l) { return !toPortal; });
     if (lockedHit.length) { lines.push('经过未开放区域：' + lockedHit[0].name); bad = true; }

@@ -1,11 +1,11 @@
 # 交接文档（给下一个 AI 会话）
 
-> 更新时间：2026-11-20 09:40。本文是**会话级交接**：讲清当前做到哪一步、还剩什么、有哪些踩过的坑。
+> 更新时间：2026-11-20 10:20。本文是**会话级交接**：讲清当前做到哪一步、还剩什么、有哪些踩过的坑。
 > 项目的技术细节沉淀在同目录 `交接文档.md`（长期维护），两份配合着读。
 >
-> **v3.40 已完成**：公交恢复成纯虚拟线路——不再被「景区/历史城区/受保护建筑只能走地下」拦住（含画线预览与建站选址），
-> 车站处转向上限按制式取值（公交 120°，地铁仍 60°），也不计景区/古建保护费。代码已同步到
-> `https://github.com/ZUNIST/maanshan-metro-bus` 并出包。
+> **v3.41 已完成**：公交可以过江，但必须走已有的桥——按「桥梁覆盖率」判定（120 m 内需有已通车的跨水桥梁道路），
+> 未通车的桥不算；过桥只收桥面改造费（80 万元/km），不到新建桥梁的 1%。代码已同步到
+> `https://github.com/ZUNIST/maanshan-metro-bus` 并出包（本版包内不含 dist，见下）。
 
 ---
 
@@ -14,19 +14,20 @@
 - **项目**：《城市地铁》马鞍山地图网页游戏（纯前端，无构建依赖，Node 只用于脚本）。
 - **工作根目录**：`C:\Users\zuni\WorkBuddy\2026-11-15-15-18-24\`
 - **主工程**：`city-and-metro-bus/`（公交独立版，游戏本体在此）。
-- **当前版本**：**v3.40.0**，改动已全部落盘，状态如下：
+- **当前版本**：**v3.41.0**，改动已全部落盘，状态如下：
 
 | 检查项 | 状态 |
 |---|---|
 | `verify-game.mjs`（source） | ✅ 16 图 / 112 文件一致（manifest 已 `--write`） |
 | `SIM_STAMP` | **已变**（改了 `config.js` / `metro.js`）→ **旧存档需开新档** |
-| 回归测试 | ✅ test-bus / test-bus-crossing / test-station-tiers / netlayout / station-names / save-storage / map-migrations 全绿；**新增 test-bus-virtual（16 项）** |
-| 交付目录 `马鞍山地图-公交版-v3.40-公交虚拟/` | ✅ 源码 277 项 md5 与主工程零差异、dist 已重建同步 |
+| 回归测试 | ✅ test-bus / test-bus-crossing / test-station-tiers / test-bus-virtual（16 项）/ **test-bus-bridge（13 项）** / netlayout / station-names / save-storage / map-migrations 全绿 |
+| 交付目录 `马鞍山地图-公交版-v3.41-过桥/` | ✅ 源码 163 项 md5 与主工程零差异；**不含 dist**（重建 dist 被安全策略拦下，见「已知」） |
 | 单文件版 | ✅ 已重打包（31.65 MB，smoke 16 图通过） |
-| **v3.40 的 zip** | ✅ 已打包（282 文件 / 52.46 MB） |
-| `交接文档.md` | ✅ 版本沿革加 v3.40 行 |
+| **v3.41 的 zip** | ✅ 已打包（168 文件 / 33.43 MB） |
+| `交接文档.md` | ✅ 版本沿革加 v3.41 行 |
 | GitHub | ✅ `ZUNIST/maanshan-metro-bus`（源码 + Release 可玩包） |
-| 历史包 | v3.36 – v3.39 的 zip 都在根目录 |
+| 历史包 | v3.36 – v3.40 的 zip 都在根目录 |
+| 已知 | `node scripts/build.mjs` 会先删 `city-and-metro-bus/dist`，在当前沙箱下被拦截（用户两次拒绝了删除）。需要重建 dist 时由用户手动删目录或授权后再跑；本版交付包因此不含 dist，游戏运行不引用它。 |
 
 启动方式：`启动游戏.bat`（pythonw 起 `serve.py`，端口 8123~8130 自动挑一个），或 `python serve.py`。
 截图/探针时注意：`serve.py` 要带 `--root "city-and-metro-bus"`（需目录内有 `index.html`），否则退 1 且 45 s 无心跳自退；
