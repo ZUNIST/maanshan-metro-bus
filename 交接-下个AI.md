@@ -1,6 +1,20 @@
 # 交接文档（给下一个 AI 会话）
 
-> 更新时间：2026-11-20 11:20。本文是**会话级交接**：讲清当前做到哪一步、还剩什么、有哪些踩过的坑。
+> 更新时间：2026-11-20 11:56。本文是**会话级交接**：讲清当前做到哪一步、还剩什么、有哪些踩过的坑。
+>
+> **v3.44.1（hotfix，未升大版本）：和县重复地标标签**。用户反馈和县有「两个陋室公园、两个体育中心、
+> 两个镇淮楼」。根因：这三个（外加霸王祠/香泉温泉/西梁山/半月湖共 7 处）在和县数据里**地标层 landmarks
+> 与设施点层 facilities 各存一份、同名同坐标**，放大后两层各画一次。修法：不动数据（试过把设施改 `lm`
+> 关联地标，但和县有两个同名 `hx_stadium`、findIndex 命中错的那座导致体育中心跑到 (212.9,154.8)，已回退），
+> 改为在 `render.js` 普通地标/设施去重循环里加 `shownPlaces` 集合 + 局部 `samePlace()`（去尾「站」+ 4 格容差），
+> 同名同点只画一次。`samePlace` 放在 render 内**不进 SIM_STAMP，旧存档不失效**；曾因漏改 `nm` 变量导致
+> `ReferenceError` 使标签全不渲染，已修为 `it.name`。测试 `scripts/test-hx-dup-labels.mjs`（7 处合并+判定+源码断言）
+> 全绿，其余回归测试通过，verify-game 清单已重建（112 文件/16 图）。已全量同步：dist、公网部署目录、
+> v3.44 交付目录源码、单文件 HTML（31.66 MB 重建）、zip（33.43 MB）。
+> **GitHub 已同步**：commit `f90505c`（3 文件），Release v3.44.0 正文追加 hotfix 说明、两个资产重传为修复版
+> （`maanshan-metro-bus-v3.44.0.zip` 35057638 B / `maanshan-single-file-bus.html` 33197302 B）。
+> **线上公网已重新部署**（同链接 `https://maanshan-metro-bus.app.workbuddy.host/?sharecode=ETBUPMTVE4`，verified）。
+> 发布脚本 `tools/publish-release.mjs` 已增强：Release 存在时 PATCH 更新正文 + 全量替换旧资产，可重复运行。
 > 项目的技术细节沉淀在同目录 `交接文档.md`（长期维护），两份配合着读。
 >
 > **v3.44 已完成：手机浏览器 DPI 适配**（在 v3.43 基础上，只改显示层，`SIM_STAMP` 未变、v3.43 存档可续用）。
@@ -14,6 +28,13 @@
 > Release `v3.44.0`（https://github.com/ZUNIST/maanshan-metro-bus/releases/tag/v3.44.0）已发布，
 > 挂两个资产：`maanshan-metro-bus-v3.44.0.zip`（完整包 35.06 MB）+ `maanshan-single-file-bus.html`（单文件 33.20 MB）。
 > 发布脚本 `tools/publish-release.mjs`（用 git 缓存凭据调 API，可重跑：会先删该 Release 全部旧资产再上传）。
+>
+> **公网网站已上线**：`workbuddy_sites_deploy` 把静态站点发布到
+> `https://maanshan-metro-bus.app.workbuddy.host/?sharecode=ETBUPMTVE4`（verified=true）。
+> 部署源目录 `公网部署-马鞍山地图/`（干净静态目录 37 MB：index.html + css/js/img + game-manifest.json，
+> 不含 dist/scripts/文档），language=static、entryHtml=index.html。**以后改了游戏要更新线上**：本地改完
+> `city-and-metro-bus/` 后，先同步到 `公网部署-马鞍山地图/`（同样只要那几项），再对该目录重新 deploy
+> （需用户当轮明确要求发布）。`.wbapp_pIPO9VnBWa4SN7l2fMBAc2.genie` 是该应用的内部标记文件，勿删。
 >
 > **v3.43 已完成**：沪武高速（原常合高速）马鞍山段**整段**按 2013-12-31 通车——v3.42 只把桥面定 2013、
 > 接线还是 2021，口径不对；现 `roadYearShots['沪武高速']=2013`，桥组用官方全称「马鞍山长江公路大桥」。
