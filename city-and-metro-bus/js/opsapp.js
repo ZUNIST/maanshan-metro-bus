@@ -6,8 +6,20 @@
   const U = CM.U, CFG = CM.CFG, h = U.h, M = CM.Metro, AX = CM.Accessibility;
   const ic = function (n, s) { return CM.icon(n, s); };
   const sfx = function (n) { if (CM.Sound) CM.Sound.play(n); };
-  // 大型站的下一级只在超大型解锁后才有（v2.7）
-  const sizeNext = { S: 'M', M: 'L', get L() { const g = CM.game; return g && CM.Metro.xlUnlocked(g.clock.y) ? 'XL' : undefined; } };
+  // 车站制式（取第一条经过本站的线路；无线路按地铁）与档位显示名（公交 XL 是「BRT 站台」）
+  const sysOfStation = function (g, s) {
+    if (!s || !g || !g.net) return 'metro';
+    for (const l of (M.stationLines(g.net, s.id) || [])) { const L = g.net.lines[l]; if (L) return M.sysOf(L); }
+    return 'metro';
+  };
+  const sizeTextOf = function (g, s) { return M.sizeText({ sys: sysOfStation(g, s) }, s && s.size); };
+  // 下一档规模（v3.46）：公交四档 S/M/L/XL 不受史实阶段限制；地铁 L→XL 只在超大型解锁后才有
+  const nextSizeOf = function (g, s) {
+    const sys = sysOfStation(g, s);
+    const ord = sys !== 'metro' ? ((CFG[sys] || {}).stationSizes || ['S', 'M']) : M.sizeList(g.clock.y);
+    const i = ord.indexOf(s && s.size);
+    return i >= 0 && i + 1 < ord.length ? ord[i + 1] : undefined;
+  };
 
   // ======================== 过载提醒 ========================
   const A = CM.OpsAlerts = {};
@@ -26,7 +38,7 @@
     if (sd && !m.dailyStale) C.stations.forEach(function (s, i) {
       if (!C.serviced[i] || i >= sd.peak.length) return;
       const r = sd.peak[i] / CM.Metro.stationCapOf(C.net, s); if (r < LIMIT.warn) return;
-      out.push({ key: 's:' + s.id, kind: 'station', id: s.id, value: r, level: r >= LIMIT.bad ? 'bad' : 'warn', name: s.name, what: '高峰负荷 ' + U.fmtPct(r, 0), title: s.name + ' 站高峰负荷 ' + U.fmtPct(r, 0), sub: CFG.metro.sizeName[s.size] + '车站 · 约 ' + U.fmtInt(sd.peak[i]) + ' 人次/时' });
+      out.push({ key: 's:' + s.id, kind: 'station', id: s.id, value: r, level: r >= LIMIT.bad ? 'bad' : 'warn', name: s.name, what: '高峰负荷 ' + U.fmtPct(r, 0), title: s.name + ' 站高峰负荷 ' + U.fmtPct(r, 0), sub: sizeTextOf(g, g.net.stations[s.id]) + '车站 · 约 ' + U.fmtInt(sd.peak[i]) + ' 人次/时' });
     });
     return out.sort(function (a, b) { return b.value - a.value; });
   };
@@ -55,12 +67,17 @@
   A.plan = function (g, x) {
     const F = CM.Fleet, y = g.clock.y, steps = [];
     let cost = 0;
-    const station = function (s) { const nx = sizeNext[s.size]; return nx ? (M.stationCost(s.type, nx, y) - M.stationCost(s.type, s.size, y)) * 1.2 : 0; };
+    const station = function (s) {
+      const nx = nextSizeOf(g, s); if (!nx) return 0;
+      const sys = (function () { for (const l of (M.stationLines(g.net, s.id) || [])) { const L = g.net.lines[l]; if (L) return M.sysOf(L); } return 'metro'; })();
+      return (M.stationCostFor(sys, s.type, nx, y) - M.stationCostFor(sys, s.type, s.size, y)) * 1.2;
+    };
     if (x.kind === 'station') {
       const s = g.net.stations[x.id]; if (!s) return { ok: false, text: '车站已不存在' };
-      if (!sizeNext[s.size]) return { ok: false, text: (s.size === 'XL' ? '已是超大型车站' : '已是大型车站') + '：需要分流，例如修平行线路或站外换乘' };
+      const nx = nextSizeOf(g, s);
+      if (!nx) return { ok: false, text: (s.size === 'XL' ? '已是最大规模（BRT 站台）' : '已是最大规模') + '：需要分流，例如修平行线路或站外换乘' };
       cost = station(s);
-      return { ok: true, steps: [{ type: 'upgrade', ids: [s.id] }], cost: cost, text: '升级为' + CFG.metro.sizeName[sizeNext[s.size]] + '车站' };
+      return { ok: true, steps: [{ type: 'upgrade', ids: [s.id] }], cost: cost, text: '升级为' + M.sizeText({ sys: (function () { for (const l of (M.stationLines(g.net, s.id) || [])) { const L = g.net.lines[l]; if (L) return M.sysOf(L); } return 'metro'; })() }, nx) };
     }
     const lid = x.id, L = g.net.lines[lid]; if (!L || !g.fleet) return { ok: false, text: '线路已不存在' };
     const o = g.fleet.ops[lid], info = F.lineInfo(g, lid) || [], parts = [];
@@ -103,7 +120,7 @@
       else if (st.type === 'move') F.move(g, st.ids, st.line, st.svc);
       else if (st.type === 'buy') { const r = F.buy(g, st.line, st.svc, st.model, st.cars, st.n); if (r.error) return r; }
       else if (st.type === 'upgrade') {
-        const had = !!g.draft, r = g.edit(function (n) { for (const id of st.ids) { const s = n.stations[id]; if (s && sizeNext[s.size]) s.size = sizeNext[s.size]; } });
+        const had = !!g.draft, r = g.edit(function (n) { for (const id of st.ids) { const s = n.stations[id]; if (!s) continue; const nx = nextSizeOf(g, s); if (nx) s.size = nx; } });
         if (r.error) return r;
         if (had) drafted = true;
         else { const c = g.canConfirm(); if (c.ok) g.confirmDraft(); else drafted = true; }
@@ -787,7 +804,14 @@
       lineSel.addEventListener('change', function () { st.lineF = lineSel.value; st.page = 0; fill(); });
       // 批量操作栏：已选数量、全选当前筛选结果、设为某一规模
       const batch = h('div', { class: 'mc-batch' });
-      const sizes = M.sizeList(g.clock.y), mc = CFG.metro;
+      // v3.46：批量档位按所选车站的制式取（公交含 XL/BRT 站台；地铁仍受 XL 解锁限制）
+      const sizes = (function () {
+        let bus = false, tram = false, metro = false;
+        for (const sid of st.sel) { const sy = sysOfStation(g, g.net.stations[sid]); if (sy === 'bus') bus = true; else if (sy === 'tram') tram = true; else metro = true; }
+        if (bus && !tram && !metro) return CFG.bus.stationSizes.slice();
+        if (tram && !bus && !metro) return CFG.tram.stationSizes.slice();
+        return M.sizeList(g.clock.y);
+      })(), mc = CFG.metro;
       const applySize = function (sz) {
         const ids = Array.from(st.sel), was = g.draft ? g.draftEval().total : 0;
         let n = 0;
@@ -889,16 +913,16 @@
         h('span', { class: 'mc-swatch mc-st' }, ic('metro', 22)),
         h('div', { class: 'mc-dh-t' },
           nameInput(s.name, 16, '车站名称', function (el) { const r = self.setStationName(sid, el.value); if (r && r.error) { self.toast(r.error, 'bad'); el.value = s.name; } }),
-          h('div', { class: 'mc-meta' }, official ? tag(stationState({ live: serviced, load: load })) : tag(['', '草案']), h('span', null, CFG.metro.sizeName[s.size] + '车站'), h('span', null, kind),
+          h('div', { class: 'mc-meta' }, official ? tag(stationState({ live: serviced, load: load })) : tag(['', '草案']), h('span', null, sizeTextOf(g, s) + '车站'), h('span', null, kind),
             ls.map(function (L) { return h('button', { class: 'mc-chip', 'data-tip': '打开线路', onclick: function () { openLine(L.id); } }, lb(L), L.name); }))),
         official ? h('button', { class: 'btn sm', 'data-tip': '在地图上定位这座车站', onclick: then(function () { A.locate(g, self, { kind: 'station', id: sid }); }) }, ic('locate', 14), '定位') : null);
       const kpis = live ? h('div', { class: 'mc-kpis' },
         kpi('日进站', U.fmtPeople(sd.inn[k])), kpi('日出站', U.fmtPeople(sd.out[k])), kpi('日换乘', U.fmtPeople(sd.xfer[k])),
         kpi('高峰负荷', U.fmtPct(load, 0), U.fmtInt(peak) + ' / ' + U.fmtInt(cap) + ' 人次/时', loadCls(load)),
-        kpi('站台规模', CFG.metro.sizeName[s.size], '最长 ' + stCars + ' 节'),
+        kpi('站台规模', sizeTextOf(g, s), '最长 ' + stCars + (lightOnly ? ' 辆' : ' 节')),
         I ? kpi('商业开发', I.lv ? '第 ' + I.lv + ' 级' : '未开发', I.lv ? '每月净 ' + U.fmtMoney(I.net(I.lv)) : '') : null) : null;
       const bar2 = tabBar('station', [['info', '拥挤诊断'], ['build', '规模与站台'], ['tod', '商业开发'], ['decor', '车站装修']], official, 'build'), tab = st.tab.station, refresh = function () { draw(); };
-      const artCap = CFG.metro.sizeName[s.size] + '车站 · ' + kind + ' · 最长 ' + stCars + ' 节' + (s.tod ? ' · 商业第 ' + s.tod + ' 级' : '');
+      const artCap = sizeTextOf(g, s) + '车站 · ' + kind + ' · 最长 ' + stCars + ' 节' + (s.tod ? ' · 商业第 ' + s.tod + ' 级' : '');
       const preview = h('div', { class: 'mc-cols' },
         h('section', { class: 'mc-card' }, cardHead('位置预览', '圆圈为步行可达范围'), mapEl({ fit: [s.x - 10, s.y - 7, s.x + 10, s.y + 7], minW: 24, station: sid, onClick: official ? then(function () { A.locate(g, self, { kind: 'station', id: sid }); }) : null })),
         h('section', { class: 'mc-card' }, cardHead('车站示意', artCap), h('div', { class: 'st-artbox', html: stationArt(s, ls) })));

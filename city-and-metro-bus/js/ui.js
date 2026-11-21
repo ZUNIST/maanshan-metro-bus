@@ -1217,13 +1217,14 @@
       const light = tramSelNow(), sys = selSys(), cfg = light ? CFG[sys] : mc;
       const list = light ? (cfg.stationSizes || ['S', 'M']) : M.sizeList(y, T.stationSize);
       const caps = light ? cfg.stationCap : mc.stationCap, cars = light ? cfg.carsBySize : mc.carsBySize;
-      const factor = light ? (cfg.stationFactor[T.buildType] || 0.45) : 1;
-      // v3.39：规模名按制式取——公交的 L 档叫「BRT 站台」，不能拼成「BRT 站台车站」
+      // v3.46：造价按制式取（公交是四档绝对表，不再用统一折扣；电车仍按地铁价折扣）
+      const costOf = function (sz) { return light ? M.stationCostFor(sys, T.buildType, sz, y) : M.stationCost(T.buildType, sz, y); };
+      // 规模名按制式取——公交的 XL 档叫「BRT 站台」，不能拼成「BRT 站台车站」
       const sName = function (sz) { return M.sizeText({ sys: sys }, sz); };
       const sShort = function (sz) { return String(sName(sz)).replace('型', '').replace(/\s*站台$/, ''); };
       const sLong = function (sz) { const n = sName(sz); return /站/.test(n) ? n : n + '车站'; };
       return grp(label, segc(T.stationSize, list.map(function (sz) {
-        return [sz, sShort(sz), sLong(sz) + '：' + U.fmtInt(caps[sz]) + ' 人次/时 · 编组上限 ' + cars[sz] + ' 辆 · 约 ' + U.fmtMoney(M.stationCost(T.buildType, sz, y) * factor) + (light ? '（' + (SYS_META[sys] || {}).name + '站按 ' + Math.round(factor * 100) + '% 计价）' : '')];
+        return [sz, sShort(sz), sLong(sz) + '：' + U.fmtInt(caps[sz]) + ' 人次/时 · 编组上限 ' + cars[sz] + ' 辆 · 约 ' + U.fmtMoney(costOf(sz))];
       }), function (v) { T.stationSize = v; }));
     };
     this._replacingToolOpts = true;
@@ -2104,7 +2105,8 @@
     const cars = scfg && scfg.carsBySize ? scfg.carsBySize : mc.carsBySize;
     const wrap = h('div');
     const cards = h('div', { class: 'size-cards' });
-    const costOf = function (sz) { return M.stationCost(opts.type, sz, y); };
+    // v3.46：造价按制式取（公交四档绝对表 / 电车折扣 / 地铁原价），预览与计费同源
+    const costOf = function (sz) { return scfg ? M.stationCostFor(opts.sys, opts.type, sz, y) : M.stationCost(opts.type, sz, y); };
     const upCost = function (sz) { return (costOf(sz) - costOf(opts.base)) * CFG.cost.upgradeFactor; };
     for (const sz of ord) {
       let line;
@@ -2125,9 +2127,12 @@
     if (opts.base && opts.cur !== opts.base && !opts.rebuild) {
       const a = opts.base, b = opts.cur, up = ord.indexOf(b) > ord.indexOf(a);
       const dOps = (CFG.ops.stationDaily[b] - CFG.ops.stationDaily[a]) * oi;
+      // 名称按制式取：公交的 XL 是「BRT 站台」，不能显示成地铁的「超大型」
+      const nm = function (sz) { return M.sizeText({ sys: opts.sys || 'metro' }, sz); };
+      const unit = scfg ? ' 辆' : ' 节';
       wrap.appendChild(h('div', { class: 'size-diff ' + (up ? 'up' : 'down') },
-        h('div', null, h('b', null, mc.sizeName[a] + ' → ' + mc.sizeName[b]), up ? '，本次升级费用 ' + U.fmtMoney(upCost(b)) : '，缩减不退还建设费'),
-        h('div', { class: 'tiny' }, '容量 ' + U.fmtInt(mc.stationCap[a]) + ' → ' + U.fmtInt(mc.stationCap[b]) + ' 人次/时 · 编组上限 ' + mc.carsBySize[a] + ' → ' + mc.carsBySize[b] + ' 节 · 运营费 ' + (dOps >= 0 ? '+' : '−') + U.fmtMoney(Math.abs(dOps)) + '/日')));
+        h('div', null, h('b', null, nm(a) + ' → ' + nm(b)), up ? '，本次升级费用 ' + U.fmtMoney(upCost(b)) : '，缩减不退还建设费'),
+        h('div', { class: 'tiny' }, '容量 ' + U.fmtInt(caps[a]) + ' → ' + U.fmtInt(caps[b]) + ' 人次/时 · 编组上限 ' + cars[a] + ' → ' + cars[b] + unit + ' · 运营费 ' + (dOps >= 0 ? '+' : '−') + U.fmtMoney(Math.abs(dOps)) + '/日')));
     }
     return wrap;
   };

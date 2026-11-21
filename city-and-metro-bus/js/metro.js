@@ -1328,8 +1328,10 @@
   function costIndex(year) { return U.priceIndex(year, CFG.cost.inflation, CFG.econBase || 1990) * (CM.Eras ? CM.Eras.finance(year).cost : 1); }
   M.costIndex = costIndex;
   M.stationCost = function (type, size, year) { return CFG.cost.station[type][size] * costIndex(year); };
-  // 车站造价（v3.24，v-bus 扩展）：只服务轻轨类的车站按对应制式的 stationFactor 打折
-  // （电车没有站厅闸机、公交只是候车亭；一旦接入地铁线则按地铁站台原价计）
+  // 车站造价（v3.24，v-bus 扩展，v3.46 四档）：只服务轻轨类的车站按对应制式的造价口径算。
+  // 公交有绝对造价表 stationCost（四档按现实分级，与地铁站的比例写在 config 注释里）；
+  // 其余轻轨（电车）没有绝对表时按 stationFactor 乘地铁同类站台价。
+  // 一旦接入地铁线则按地铁站台原价计（公交站升级成换乘站，要按地铁站标准重建）。
   M.stationCostOf = function (net, sid, type, size, year) {
     const v = M.stationCost(type, size, year);
     if (!net) return v;
@@ -1337,10 +1339,21 @@
     if (!ls.length) return v;
     const anyMetro = ls.some(function (l) { return net.lines[l] && !M.isLight(net.lines[l]); });
     if (anyMetro) return v;
-    // 一站被多种轻轨制式共用时取折扣最大（造价最低）的那条，避免重复收费
-    let factor = 1;
-    for (const lid of ls) { const L = net.lines[lid]; if (L && M.isLight(L)) factor = Math.min(factor, (M.cfgOf(L).stationFactor || {})[type] || 1); }
-    return v * factor;
+    // 一站被多种轻轨制式共用时取造价最低的那条，避免重复收费
+    let best = Infinity;
+    for (const lid of ls) {
+      const L = net.lines[lid]; if (!L || !M.isLight(L)) continue;
+      best = Math.min(best, M.stationCostFor(M.sysOf(L), type, size, year));
+    }
+    return isFinite(best) ? best : v;
+  };
+  // 按制式 + 建设方式 + 规模取车站造价（v3.46）：公交用绝对表，电车/地铁用折扣，供 UI 预览与计费共用
+  M.stationCostFor = function (sys, type, size, year) {
+    const ci = costIndex(year), cfg = sys && sys !== 'metro' ? CFG[sys] : null;
+    if (cfg && cfg.stationCost && cfg.stationCost[size] != null) return cfg.stationCost[size] * ci;
+    const base = (CFG.cost.station[type] || CFG.cost.station.surface)[size] || 0;
+    const f = cfg && cfg.stationFactor ? (cfg.stationFactor[type] || 1) : 1;
+    return base * f * ci;
   };
   M.devFactor = function (city, c) {
     if (c < 0) return 0;

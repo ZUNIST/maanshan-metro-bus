@@ -878,6 +878,72 @@
     return out.length ? out : null;
   };
 
+  // 道路端点焊接（v3.46）：高德 style=8 瓦片骨架化提取的补充路段是一段段独立折线，
+  // 路口处端点常差 0.1–0.5 格没接上，俯瞰时就是「一段一段没连起来」（和县最明显）。
+  // 这里在渲染层把悬空端点接到 0.42 格内最近的道路端点或线段上，只补一小段连接线，
+  // 不改 Geo.roads 数据、不影响仿真/存档/过桥判定；按 city.roadVersion 缓存，年份推进后才重算。
+  Renderer.prototype._roadWeld = function (city) {
+    // 缓存键含已通车道路数：首帧可能早于 applyRoads（roadsBuilt 全 0），只按 roadVersion 会把空结果缓存住
+    const rb = city.roadsBuilt, rn = rb ? rb.length : 0; let bc = 0;
+    for (let i = 0; i < rn; i++) bc += rb[i];
+    const w = this._weld;
+    if (w && w.city === city && w.ver === city.roadVersion && w.bc === bc) return w;
+    const ways = city.roadWays || [], G = CM.Geo, CELL = 0.5;
+    const grid = new Map(), gk = function (i, j) { return i + ',' + j; };
+    const ends = [];
+    for (let k = 0; k < ways.length; k++) {
+      const p = ways[k].p, n = p.length; if (n < 4) continue;
+      if (!city.roadsBuilt[ways[k].g]) continue;   // 未通车的路不参与焊接
+      for (const e of [0, n - 2]) {
+        const x = p[e], y = p[e + 1], i = Math.floor(x / CELL), j = Math.floor(y / CELL), kk = gk(i, j);
+        let a = grid.get(kk); if (!a) grid.set(kk, a = []);
+        const rec = { x: x, y: y, w: k };
+        a.push(rec); ends.push(rec);
+      }
+    }
+    const seen = new Set(), byCls = {};
+    const add = function (x1, y1, x2, y2, k) {
+      // 跨水的补线一律不画：河两岸的端点离得近，但中间是江面，连起来就凭空多出一座桥
+      const mc = city.cellAt((x1 + x2) / 2, (y1 + y2) / 2);
+      if (mc < 0 || city.lu[mc] === LU.WATER || city.water && city.water[mc]) return;
+      const id = Math.round(x1 * 20) + ',' + Math.round(y1 * 20) + ',' + Math.round(x2 * 20) + ',' + Math.round(y2 * 20);
+      if (seen.has(id)) return; seen.add(id);
+      const gr = city.roadGroups[ways[k].g]; if (!gr) return;
+      const bucket = (gr.flags & 4) ? 'link' : (gr.flags & 2) ? 'tunnel' : (gr.cls || 2);
+      let P = byCls[bucket]; if (!P) byCls[bucket] = P = new Path2D();
+      P.moveTo(x1, y1); P.lineTo(x2, y2);
+    };
+    for (const e of ends) {
+      const i0 = Math.floor(e.x / CELL), j0 = Math.floor(e.y / CELL);
+      // ① 端点—端点：最近的另一条路端点（路口两段各自收头）
+      let best = null, bd = 0.42;
+      for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) {
+        const a = grid.get(gk(i0 + di, j0 + dj)); if (!a) continue;
+        for (const o of a) {
+          if (o.w === e.w) continue;
+          const d = Math.hypot(o.x - e.x, o.y - e.y);
+          if (d > 0.02 && d < bd) { bd = d; best = o; }
+        }
+      }
+      if (best) { add(e.x, e.y, best.x, best.y, e.w); continue; }
+      // ② 端点—线段：T 字路口，支路尽头贴到干道中间
+      const near = G.query(city.roadWayBk, e.x - 0.42, e.y - 0.42, e.x + 0.42, e.y + 0.42);
+      let bq = null, bqd = 0.24;
+      for (const k of near) {
+        if (k === e.w) continue;
+        const p = ways[k].p;
+        for (let q = 0; q + 3 < p.length; q += 2) {
+          const ax = p[q], ay = p[q + 1], dx = p[q + 2] - ax, dy = p[q + 3] - ay, L2 = dx * dx + dy * dy || 1;
+          let t = ((e.x - ax) * dx + (e.y - ay) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const qx = ax + t * dx, qy = ay + t * dy, d = Math.hypot(e.x - qx, e.y - qy);
+          if (d > 0.02 && d < bqd) { bqd = d; bq = [qx, qy]; }
+        }
+      }
+      if (bq) add(e.x, e.y, bq[0], bq[1], e.w);
+    }
+    return (this._weld = { city: city, ver: city.roadVersion, bc: bc, byCls: byCls });
+  };
+
   Renderer.prototype.drawGround = function (ctx, X0, Y0, X1, Y1, lvl) {
     const g = this.game, city = g.city, W = city.W, H = city.H, Geo = CM.Geo;
     const i0 = Math.max(0, Math.floor(X0)), j0 = Math.max(0, Math.floor(Y0)), i1 = Math.min(W, Math.ceil(X1)), j1 = Math.min(H, Math.ceil(Y1));
@@ -1090,14 +1156,21 @@
     }
     // 支路：只在已开发的街区显示
     const streets = Geo.streetBk && lvl >= 16 ? Geo.query(Geo.streetBk, X0 - 0.5, Y0 - 0.5, X1 + 0.5, Y1 + 0.5) : [];
+    // 支路：只在已开发的街区显示（v3.46 改成「整条判定」）。
+    // 以前逐段判断中点所在格，和县这类开发斑块稀疏的地方，一条街只有几格通过，
+    // 画出来就是一段一段孤立短线（用户反馈「很多路一段一段没连起来」）。
+    // 现在：一条街只要有任意一段落在已开发街区，就整条画出来——街区边缘的延伸段照常显示，
+    // 完全在乡野里的街（一段都不沾建成区）仍然不画，避免空地铺满路网。
     const st = new Path2D();
     for (const k of streets) {
       const p = Geo.streets[k].p;
+      let any = false;
       for (let q = 0; q + 3 < p.length; q += 2) {
         const c = city.cellAt((p[q] + p[q + 2]) / 2, (p[q + 1] + p[q + 3]) / 2);
-        if (c < 0 || !city.street[c] || city.lu[c] === LU.PARK) continue;
-        st.moveTo(p[q], p[q + 1]); st.lineTo(p[q + 2], p[q + 3]);
+        if (c >= 0 && city.street[c] && city.lu[c] !== LU.PARK) { any = true; break; }
       }
+      if (!any) continue;
+      for (let q = 0; q + 3 < p.length; q += 2) { st.moveTo(p[q], p[q + 1]); st.lineTo(p[q + 2], p[q + 3]); }
     }
     // 主要道路（已通车）
     const ways = city.roadWayBk ? Geo.query(city.roadWayBk, X0 - 0.5, Y0 - 0.5, X1 + 0.5, Y1 + 0.5) : [];
@@ -1129,6 +1202,14 @@
     ctx.lineWidth = Math.max(0.12, px * 3); ctx.stroke(P4);
     if (tunnels.length) { ctx.strokeStyle = RD.tunnel; ctx.lineWidth = Math.max(0.05, px * 1.6); ctx.setLineDash([0.12, 0.08]); ctx.stroke(PT); ctx.setLineDash([]); }
     if (lvl >= 32 && lay[4].length) { ctx.strokeStyle = RD.expLine; ctx.lineWidth = px; ctx.stroke(P4); }
+    // 端点焊接补线（v3.46）：与对应等级的路面同色同宽，把高德补充路段之间的缝隙连上
+    const rod = this._roadWeld(city).byCls;
+    if (rod) {
+      if (rod[2]) { ctx.strokeStyle = RD.coll; ctx.lineWidth = Math.max(0.055, px * 1.7); ctx.stroke(rod[2]); }
+      if (rod[3]) { ctx.strokeStyle = RD.art; ctx.lineWidth = Math.max(0.085, px * 2.3); ctx.stroke(rod[3]); }
+      if (rod[4]) { ctx.strokeStyle = RD.exp; ctx.lineWidth = Math.max(0.12, px * 3); ctx.stroke(rod[4]); }
+      if (rod.link) { ctx.strokeStyle = RD.exp; ctx.lineWidth = Math.max(0.04, px * 1.4); ctx.stroke(rod.link); }
+    }
     // 尚未填海成陆的区域盖回水面：伸向新土地的道路、桥梁与铁路在成陆前不显示
     if (anyRc) { ctx.fillStyle = GROUND.water; ctx.fill(rpth, 'nonzero'); }
     // 地标占地（2D）

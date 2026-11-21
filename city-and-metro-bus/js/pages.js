@@ -525,7 +525,14 @@
     const g = this.g(), self = this, model = g.model, mnet = model.net, C = mnet.C, sd = model.dailyStale ? null : (model.stDailyWk || model.stDaily), mc = CFG.metro;
     if (!sd || k >= sd.peak.length) return null;
     const st = C.stations[k], cap = (C.stCap && C.stCap[k]) || mc.stationCap[st.size], stR = sd.peak[k] / cap;
-    const ord = M.sizeList(g.clock.y, st.size), next = function (sz) { return ord[Math.min(ord.length - 1, ord.indexOf(sz) + 1)]; }, topSize = ord[ord.length - 1];
+    // v3.46：档位顺序按本站制式取——公交是 S/M/L/XL(BRT)，不受地铁 XL 解锁限制
+    const stSys = (function () {
+      for (const l of (M.stationLines(g.net, st.id) || [])) { const L = g.net.lines[l]; if (L) return M.sysOf(L); }
+      return 'metro';
+    })();
+    const ord = stSys !== 'metro' ? (CFG[stSys].stationSizes || ['S', 'M']).slice() : M.sizeList(g.clock.y, st.size);
+    const next = function (sz) { const i = ord.indexOf(sz); return ord[Math.min(ord.length - 1, i < 0 ? 0 : i + 1)]; }, topSize = ord[ord.length - 1];
+    const sizeNm = function (sz) { return M.sizeText({ sys: stSys }, sz); };
     const trains = [];
     for (const r of C.stationRoutes[k]) {
       const rt = C.routes[r], re = mnet.rideEdge[r], n = rt.stIdx.length;
@@ -546,8 +553,8 @@
     const item = function (level, title, text, actions) { box.appendChild(h('div', { class: 'diag-item lv-' + level }, h('b', null, title), h('div', { class: 'small' }, text), actions.filter(Boolean).length ? h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px', marginTop: '6px' } }, actions.filter(Boolean)) : null)); };
     const divert = h('button', { class: 'btn sm ghost', onclick: function () { self.showDiversion(st); } }, '查看可分流方向');
     if (stR > 0.8) {
-      const up = st.size !== topSize ? h('button', { class: 'btn sm primary', onclick: function () { g.edit(function (n) { if (n.stations[id]) n.stations[id].size = next(st.size); }); self.toast('已在草案中把「' + st.name + '」升级为' + mc.sizeName[next(st.size)] + '车站', 'info'); } }, '升级为' + mc.sizeName[next(st.size)] + '车站') : null;
-      item(stR > 1 ? 'bad' : 'warn', stR > 1 ? '车站容量不足' : '车站接近饱和', '工作日高峰小时进出站与换乘约 ' + U.fmtInt(sd.peak[k]) + ' 人次，' + mc.sizeName[st.size] + '车站能力 ' + U.fmtInt(cap) + ' 人次/时（' + U.fmtPct(stR, 0) + '）。' + (stR > 1 ? '乘客在闸机、楼梯与换乘通道排队，进出站变慢。' : '') + (st.size === 'XL' ? '已是超大型车站，只能通过新线路分流。' : st.size === topSize ? (isFinite(M.xlYear()) ? '已是大型车站：' + M.xlYear() + ' 年起可升级为超大型，现在只能通过新线路分流。' : '已是大型车站，只能通过新线路分流。') : ''), [up, divert]);
+      const up = st.size !== topSize ? h('button', { class: 'btn sm primary', onclick: function () { g.edit(function (n) { if (n.stations[id]) n.stations[id].size = next(st.size); }); self.toast('已在草案中把「' + st.name + '」升级为' + sizeNm(next(st.size)) + '车站', 'info'); } }, '升级为' + sizeNm(next(st.size)) + '车站') : null;
+      item(stR > 1 ? 'bad' : 'warn', stR > 1 ? '车站容量不足' : '车站接近饱和', '工作日高峰小时进出站与换乘约 ' + U.fmtInt(sd.peak[k]) + ' 人次，' + sizeNm(st.size) + '车站能力 ' + U.fmtInt(cap) + ' 人次/时（' + U.fmtPct(stR, 0) + '）。' + (stR > 1 ? '乘客在闸机、楼梯与换乘通道排队，进出站变慢。' : '') + (st.size === topSize ? (stSys !== 'metro' ? '已是最大规模（' + sizeNm(st.size) + '），只能通过新线路分流。' : (st.size === 'XL' ? '已是超大型车站，只能通过新线路分流。' : (isFinite(M.xlYear()) ? '已是大型车站：' + M.xlYear() + ' 年起可升级为超大型，现在只能通过新线路分流。' : '已是大型车站，只能通过新线路分流。'))) : ''), [up, divert]);
     }
     for (const t of trains) {
       const rt = t.rt, w = t.w, A = C.stations[w.a], B = C.stations[w.b];
@@ -914,7 +921,26 @@
   UI.prototype.page_multi = function () {
     const g = this.g(), self = this, mu = this.multi;
     if (!mu || (!mu.stations.size && !mu.segs.size)) return null;
-    const net = g.draft ? g.draft.net : g.net, mc = CFG.metro, ord = M.sizeList(g.clock.y);
+    const net = g.draft ? g.draft.net : g.net, mc = CFG.metro;
+    // v3.46：批量升级的档位要覆盖所选车站可能出现的全部档位（公交有 XL/BRT 站台），
+    // 且按每座车站自己的制式判断「只升级不降级」——否则公交 XL 站在地铁档位表里序号为 -1 会被误降级。
+    const ordBase = M.sizeList(g.clock.y);
+    const hasBus = Array.from(mu.stations).some(function (id) {
+      const s = net.stations[id]; if (!s) return false;
+      for (const l of (M.stationLines(net, id) || [])) { const L = net.lines[l]; if (L && M.isBus(L)) return true; }
+      return false;
+    });
+    const ord = hasBus && ordBase.indexOf('XL') < 0 ? ordBase.concat(['XL']) : ordBase;
+    const sysOrdOf = function (sid) {
+      for (const l of (M.stationLines(net, sid) || [])) {
+        const L = net.lines[l]; if (!L) continue;
+        const sy = M.sysOf(L);
+        if (sy !== 'metro') return (CFG[sy].stationSizes || ['S', 'M']).slice();
+        break;
+      }
+      return M.sizeList(g.clock.y);
+    };
+    const rankOf = function (sid, sz) { return sysOrdOf(sid).indexOf(sz); };
     const st = Array.from(mu.stations).filter(function (id) { return net.stations[id]; });
     const sg = Array.from(mu.segs).filter(function (id) { return net.segments[id]; });
     const el = h('div');
@@ -955,8 +981,9 @@
     if (st.length) {
       el.appendChild(h('div', { class: 'field', style: { marginTop: '10px' } }, h('label', null, '统一车站规模（只升级，较大的车站保持不变）'),
         h('div', { class: 'seg-ctl' }, ord.slice(1).map(function (sz) {
-          const n = st.filter(function (id) { return ord.indexOf(net.stations[id].size) < ord.indexOf(sz); }).length;
-          return h('button', { onclick: function () { preview('统一升级为' + mc.sizeName[sz] + '车站', function (nn) { for (const id of st) { const s = nn.stations[id]; if (s && ord.indexOf(s.size) < ord.indexOf(sz)) s.size = sz; } }, n); } }, '至少' + mc.sizeName[sz] + '（' + n + '）');
+          const n = st.filter(function (id) { const r = rankOf(id, net.stations[id].size); return r >= 0 && r < rankOf(id, sz); }).length;
+          const szNm = function (sid) { for (const l of (M.stationLines(net, sid) || [])) { const L = net.lines[l]; if (L && M.sysOf(L) !== 'metro') return M.sizeText({ sys: M.sysOf(L) }, sz); } return mc.sizeName[sz]; };
+          return h('button', { onclick: function () { preview('统一升级为' + szNm(st[0]) + '车站', function (nn) { for (const id of st) { const s = nn.stations[id]; if (!s) continue; const r = rankOf(id, s.size), t = rankOf(id, sz); if (r >= 0 && t > r) s.size = sz; } }, n); } }, '至少' + szNm(st[0]) + '（' + n + '）');
         }))));
     }
     if (sg.length) {
