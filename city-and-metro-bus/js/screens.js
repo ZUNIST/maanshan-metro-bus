@@ -231,7 +231,7 @@
         if (bgSrc) self.stageBg(bgSrc, fromRect);
         else if (CM.mapThumbAsync) CM.mapThumbAsync(sel, theme).then(function (u) { if (u) self.stageBg(u, fromRect); });
         if (mp.tutorial) CM.newGame({ map: sel, mode: 'free', tutorial: true, name: '新手教程 · ' + mp.data.city });
-        else CM.newGame({ map: sel, mode: mode, name: (free ? '自由建造' : '经营挑战') + ' · ' + mp.data.city + ' ' + yr, startYear: free && yr > y0 ? yr : null, unlockAll: free && fo.unlock });
+        else CM.newGame({ map: sel, mode: mode, name: mp.data.saveName || ((free ? '自由建造' : '经营挑战') + ' · ' + mp.data.city + ' ' + yr), startYear: free && yr > y0 ? yr : null, unlockAll: free && fo.unlock });
       };
       // 自由建造选项置于顶层，避免被选图面板和手机上的滚动容器裁切。
       const freeParts = function () {

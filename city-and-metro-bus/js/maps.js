@@ -295,6 +295,7 @@
           (!stub.count || (full.water.length === stub.count.water && full.roads.length === stub.count.roads));
         finish(valid ? full : null);
       };
+      script.onload = settle;
       script.onerror = function () { finish(null); };
       // 单文件版（tools/build-single.mjs）：地理数据内嵌在 <script type="application/city-metro-geo"
       // id="geo-inline-geo_ms">，直接取文本执行，不再发网络请求；内联脚本 appendChild 后同步执行。
