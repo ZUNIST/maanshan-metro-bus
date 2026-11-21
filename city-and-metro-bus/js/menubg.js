@@ -5,6 +5,9 @@
 // 深色主题下车辆是车灯（迎面白、背向红），列车亮起车窗。减少动态效果时只画一帧静止画面。
 (function (CM) {
   const D = CM.MENU_BG_DATA;
+  // v3.57：SS 是「每格多少像素」的换算系数。原版广州画面一屏装下整座城（1 格≈10 px），
+  // 新街口封面只取 5 km 见方（1 格≈74 px），如果不折算，列车和车流会放大六七倍糊成一片。
+  const SS = D.ss || 1;
   const MB = CM.MenuBg = { run: function () {} };
   if (!D) return;
   const TRAIN_V = 1.1, TRAIN_DWELL = 1.6, TRAIN_GAP = 12, CAR_N = 1800;   // 列车最高速度（格/秒，画面加速）、停站秒数、同向间隔（格）、车辆数
@@ -107,15 +110,15 @@
     const g = c.getContext('2d'), N = dark(); g.lineCap = 'round'; g.lineJoin = 'round';
     for (const pass of [0, 1]) for (const P of lines) {
       for (let i = 0; i + 1 < P.n; i++) {
-        const dw = P.w[i + 1] - P.w[i] || 1e-6, s = Math.hypot((P.x[i + 1] - P.x[i]) * D.w, (P.y[i + 1] - P.y[i]) * D.h) / dw * sc;
+        const dw = P.w[i + 1] - P.w[i] || 1e-6, s = Math.hypot((P.x[i + 1] - P.x[i]) * D.w, (P.y[i + 1] - P.y[i]) * D.h) / dw * sc * SS;
         g.beginPath(); g.moveTo(P.x[i] * W, P.y[i] * H); g.lineTo(P.x[i + 1] * W, P.y[i + 1] * H);
-        if (pass === 0) { g.strokeStyle = N ? 'rgba(10,16,28,0.55)' : 'rgba(255,255,255,0.92)'; g.lineWidth = Math.max(1.5, s * 0.17); }
-        else { g.strokeStyle = P.c; g.globalAlpha = N ? 0.95 : 0.9; g.lineWidth = Math.max(1, s * 0.09); }
+        if (pass === 0) { g.strokeStyle = N ? 'rgba(8,12,20,0.65)' : 'rgba(255,255,255,0.96)'; g.lineWidth = Math.max(2.6, s * 0.34); }
+        else { g.strokeStyle = P.c; g.globalAlpha = N ? 0.98 : 0.96; g.lineWidth = Math.max(1.7, s * 0.17); }
         g.stroke(); g.globalAlpha = 1;
       }
     }
     for (const P of lines) for (const d of P.st) {
-      at(P, d, P0); const r = Math.max(1.6, P0.s * sc * 0.085);
+      at(P, d, P0); const r = Math.max(2.4, P0.s * sc * SS * 0.14);
       g.beginPath(); g.arc(P0.x * W, P0.y * H, r, 0, Math.PI * 2);
       g.fillStyle = N ? '#162133' : '#ffffff'; g.fill(); g.lineWidth = Math.max(1, r * 0.45); g.strokeStyle = N ? P.c : '#3b4656'; g.stroke();
     }
@@ -130,7 +133,7 @@
     // 车辆：右侧通行，按透视缩放；浅色为小色块（按颜色分组成一条路径），深色为车灯（迎面白色、远去红色，光晕加亮点两遍）
     const q = {}, groups = N ? [new Path2D(), new Path2D(), new Path2D(), new Path2D()] : CAR_L.map(function () { return new Path2D(); });
     for (const c of cars) {
-      const R = roads[c.r]; at(R, c.d, q); const s = q.s * sc, l = Math.hypot(q.dx * W, q.dy * H) || 1;
+      const R = roads[c.r]; at(R, c.d, q); const s = q.s * sc * SS, l = Math.hypot(q.dx * W, q.dy * H) || 1;
       const nx = -q.dy * H / l * c.dir, ny = q.dx * W / l * c.dir, off = s * 0.035, x = q.x * W + nx * off, y = q.y * H + ny * off;
       const z = Math.max(1.5, s * 0.1) * (0.4 + 0.6 * c.a);
       if (x < -4 || y < -4 || x > W + 4 || y > H + 4) continue;
@@ -144,13 +147,13 @@
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.2; ctx.fillStyle = '#ffe9b8'; ctx.fill(groups[0]); ctx.fillStyle = '#ff4a36'; ctx.fill(groups[2]);
       ctx.globalAlpha = 0.95; ctx.fillStyle = '#fff6e0'; ctx.fill(groups[1]); ctx.fillStyle = '#ff5a44'; ctx.fill(groups[3]);
-    } else { ctx.globalAlpha = 0.9; CAR_L.forEach(function (col, i) { ctx.fillStyle = col; ctx.fill(groups[i]); }); }
+    } else { ctx.globalAlpha = 0.72; CAR_L.forEach(function (col, i) { ctx.fillStyle = col; ctx.fill(groups[i]); }); }
     ctx.globalCompositeOperation = 'source-over'; ctx.globalAlpha = 1;
     // 列车：沿线两条轨道（右侧行车），车身为线路色的圆角长条，深色主题亮起车窗
     for (const T of trains) {
       const P = T.P; at(P, trainPos(T), q);
-      const s = q.s * sc, l = Math.hypot(q.dx * W, q.dy * H) || 1, ux = q.dx * W / l * T.dir, uy = q.dy * H / l * T.dir, off = s * 0.07;
-      const x = q.x * W - uy * off, y = q.y * H + ux * off, len = Math.max(10, s * 0.95), wid = Math.max(3.2, s * 0.26);
+      const s = q.s * sc * SS, l = Math.hypot(q.dx * W, q.dy * H) || 1, ux = q.dx * W / l * T.dir, uy = q.dy * H / l * T.dir, off = s * 0.07;
+      const x = q.x * W - uy * off, y = q.y * H + ux * off, len = Math.max(14, s * 1.5), wid = Math.max(5, s * 0.44);
       ctx.save(); ctx.translate(x, y); ctx.rotate(Math.atan2(uy, ux));
       ctx.beginPath();
       if (ctx.roundRect) ctx.roundRect(-len / 2, -wid / 2, len, wid, wid / 2); else ctx.rect(-len / 2, -wid / 2, len, wid);

@@ -19,14 +19,20 @@ const out = process.argv[2] || path.resolve(root, '..', '马鞍山地图', '马�
 
 // 加载动画 / 关于页引用 img/logo-*.png：单文件版没有 img/ 目录，file:// 下 SVG <image> 取不到图，
 // 加载 LOGO 会发白、掉色（文件夹版正常）。v3.30 起把两张 LOGO 一并转成 data URI 内联。
+// v3.57：主菜单背景（新街口 2.5D 图，webp）也一并内联，否则单文件版单独拷走时背景图会丢
+const MIME = { png: 'image/png', webp: 'image/webp', svg: 'image/svg+xml' };
 const logoUris = {};
-for (const f of ['img/logo-navy.png', 'img/logo-white.png']) {
-  logoUris[f] = 'data:image/png;base64,' + (await readFile(path.join(root, f))).toString('base64');
+for (const f of ['img/logo-navy.png', 'img/logo-white.png', 'img/menu-bg-nj-light.webp', 'img/menu-bg-nj-dark.webp']) {
+  const mime = MIME[f.split('.').pop()] || 'application/octet-stream';
+  logoUris[f] = 'data:' + mime + ';base64,' + (await readFile(path.join(root, f))).toString('base64');
 }
 const inlineLogos = function (text) {
   for (const f in logoUris) {
     text = text.split("'" + f + "'").join("'" + logoUris[f] + "'");
     text = text.split('"' + f + '"').join('"' + logoUris[f] + '"');
+    // CSS 里是 url(../img/xxx)，不带引号，单独替换一次
+    text = text.split('url(../' + f + ')').join('url(' + logoUris[f] + ')');
+    text = text.split('url(' + f + ')').join('url(' + logoUris[f] + ')');
   }
   return text;
 };

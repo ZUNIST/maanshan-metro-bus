@@ -246,7 +246,8 @@
         try { if (job.gen) job.gen.return(); } catch (closeError) { console.error(closeError); }
         end();
         if (e && e.code === 'LOAD_TIMEOUT') for (const pool of [CM.SkimPool, CM.OdPool, CM.CarPool]) if (pool) pool.fail('载入计算长时间未响应');
-        CM.useMap(job.mapId || 'gz');
+        // 回退到载入前的地图；若那份数据刚好已被释放（懒加载后可能发生），只做清理，不再切图
+        try { CM.useMap(job.mapId || 'gz'); } catch (mapError) { console.warn(mapError); }
         CM.releaseGeos();
         if (prev && CM.game === prev) {
           if (prev.model) prev.model.retired = job.prevRetired;
@@ -295,7 +296,11 @@
     if (CM.CityLink) CM.CityLink.clear();
     if (CM.Follow) CM.Follow.stop(true);
     if (CM.Tutorial) CM.Tutorial.detach();
-    CM.useMap('gz');   // 开始界面背景是广州
+    // v3.56.1：广州地理数据改为按需加载后，如果玩家在此之前返回主菜单，广州数据可能还没到。
+    // 以前这里直接 useMap('gz') 会抛「地图数据尚未载入：广州」，把后面一整串清理（面板、HUD、重绘、工具状态）
+    // 全部跳过——玩家看到的就是主菜单卡住不动。现在：能切就切，不能切就先放着，数据到了再切回来并重绘一次。
+    const homeReady = CM.geoReady('gz');
+    if (homeReady) CM.useMap('gz');   // 开始界面背景是广州
     CM.releaseGeos();
     ui.closeSearch();
     if (CM.NetMap) CM.NetMap.close();
@@ -315,6 +320,12 @@
     R.render(0, ui);
     clearTimeout(workerReleaseTimer);
     workerReleaseTimer = setTimeout(releaseIdleWorkers, 500);
+    // 广州数据还没到（或刚才失败）：到主菜单后再补，补上就把全局切回广州并重绘一帧。
+    // 玩家已经开了新一局或还在载入时不动，避免把地图状态切走。
+    if (!homeReady) CM.loadGeo('gz').then(function () {
+      if (CM.game || CM.isLoading()) return;
+      try { CM.useMap('gz'); CM.releaseGeos(); R.render(0, ui); } catch (e) { console.warn(e); }
+    }, function () { /* 取不到就算了：主菜单背景是预制封面，不依赖广州数据 */ });
   };
 
   let last = performance.now(), fpsAcc = 0, fpsN = 0, lastJumpPaint = -1e9;
@@ -380,4 +391,10 @@
   showMenuBg(true);
   CM.Save.init().then(function () { ui.showStart(); }, function () { ui.showStart(); });
   setTimeout(function () { if (CM.prewarmThumbs) CM.prewarmThumbs(document.documentElement.dataset.theme); }, 1500);
+  // v3.56.1：主菜单背景改用预制封面后，广州地理数据只在「返回主菜单」时才被用到。空闲时先取来（gz 后约 0.5 MB），
+  // 玩家玩几分钟再回主菜单就不用等；已经在开局载入中则不抢带宽。
+  setTimeout(function () {
+    if (CM.game || loading || CM.geoReady('gz')) return;
+    CM.loadGeo('gz').catch(function () {});
+  }, 3000);
 })(window.CM);

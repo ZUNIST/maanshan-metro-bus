@@ -4025,9 +4025,9 @@ input[type=range][disabled]::-webkit-slider-thumb { transform: none; box-shadow:
 #menubg.off { opacity: 0; visibility: hidden; transition: opacity .6s ease, visibility 0s linear .6s; }
 #menubg .mbg-cam { position: absolute; inset: 0; width: 100%; height: 100%; }
 #menubg i, #menubg .mbg-fx { position: absolute; inset: 0; width: 100%; height: 100%; }
-#menubg i { background: center / 100% 100% no-repeat; }
-#menubg .mbg-l { background-image: url(../img/cover-ms-light.svg); }
-#menubg .mbg-d { background-image: url(../img/cover-ms-dark.svg); opacity: 0; transition: opacity .7s ease; }
+#menubg i { background: center / cover no-repeat; }   /* v3.57：底图等比铺满，不拉伸变形 */
+#menubg .mbg-l { background-image: url(../img/menu-bg-nj-light.webp); }
+#menubg .mbg-d { background-image: url(../img/menu-bg-nj-dark.webp); opacity: 0; transition: opacity .7s ease; }
 :root[data-theme="dark"] #menubg .mbg-d { opacity: 1; }
 @keyframes mbg-cam {
   0%, 100% { transform: translate(-50%, -50%) translate(2%, 1%) scale(1); }
