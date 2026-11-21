@@ -123,13 +123,14 @@ assert.ok(sTram < sMetro * 0.5, '电车站造价应明显低于地铁站');
 assert.equal(M.stationCapOf(net, net.stations[sid0]), T.stationCap.S, '纯电车站按电车站台容量');
 assert.equal(M.sizeOkFor(net.lines[lid], 'S'), true, '电车可以建小型站');
 assert.equal(M.sizeOkFor(net.lines[lid], 'M'), true, '电车可以建中型站');
-assert.equal(M.sizeOkFor(net.lines[lid], 'L'), false, '电车不能建大型站');
+assert.equal(M.sizeOkFor(net.lines[lid], 'L'), true, '电车可以建大型站（v3.39 起）');
+assert.equal(M.sizeOkFor(net.lines[lid], 'XL'), false, '电车不能建 XL（BRT 站台是公交的）');
 
-// 电车线路上出现大型站 → 冲突
+// 电车线路上出现 XL 站 → 冲突（超出电车允许的档位）
 const big = M.clone(net);
-big.stations[sid0].size = 'L';
+big.stations[sid0].size = 'XL';
 const evBig = M.evaluate(big, g.net, city, 2027);
-assert.ok(evBig.conflicts.some(c => c.type === 'tramSize'), '大型电车站应报冲突');
+assert.ok(evBig.conflicts.some(c => c.type === 'tramSize'), '超档电车站应报冲突');
 
 // 电车与地铁共用一座车站 → 冲突
 const shared = M.clone(net);
