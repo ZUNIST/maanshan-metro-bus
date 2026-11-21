@@ -55,11 +55,11 @@ ok(Math.abs(busNeed.a - metroNeed.a) < 1e-6, '公交无 maxGrade 回退地铁坡
 // 端到端接线验证：坡道检查与高度剖面都把线路对象透传下去，冲突文案按制式显示。
 // （几何长度/采样由 segGeom 决定，端到端构造脆弱；这里用源码断言锁定接线，数值已由上面覆盖。）
 const metroSrc = await readFile(new URL('js/metro.js', root), 'utf8');
-ok(/M\.rampNeed\s*=\s*function\s*\(tA,\s*tS,\s*tB,\s*line\)/.test(metroSrc), 'rampNeed 接收线路参数');
+ok(/M\.rampNeed\s*=\s*function\s*\(tA,\s*tS,\s*tB,\s*line,\s*va,\s*vb\)/.test(metroSrc), 'rampNeed 接收线路参数（第 4 位；va/vb 为虚拟节点减半）');
 ok(/const cfg = line \? M\.cfgOf\(line\) : CFG\.metro/.test(metroSrc), 'rampNeed 按制式取配置');
-ok(/M\.heightProfile\s*=\s*function\s*\(g,\s*tA,\s*tS,\s*tB,\s*line\)/.test(metroSrc), 'heightProfile 接收并透传线路');
-ok(/M\.rampNeed\(tA, tS, tB, line\)/.test(metroSrc), 'heightProfile 把线路传给 rampNeed');
-ok(/M\.rampNeed\(tA, s\.type, tB, line\)/.test(metroSrc), 'evaluate 坡道检查把线路传给 rampNeed');
+ok(/M\.heightProfile\s*=\s*function\s*\(g,\s*tA,\s*tS,\s*tB,\s*line,\s*va,\s*vb\)/.test(metroSrc), 'heightProfile 接收并透传线路');
+ok(/M\.rampNeed\(tA, tS, tB, line, va, vb\)/.test(metroSrc), 'heightProfile 把线路传给 rampNeed');
+ok(/M\.rampNeed\(tA, s\.type, tB, line, va, vb\)/.test(metroSrc), 'evaluate 坡道检查把线路传给 rampNeed');
 ok(/M\.sysName\(line\) \+ '最大坡度为 ' \+ Math\.round\(\(rampCfg\.maxGrade/.test(metroSrc), '冲突文案按制式显示坡度');
 
 console.log('\nPASS ' + passed + ' 项：有轨电车坡度放宽到 6%，地铁 3% 不变，存档/调用兼容。');

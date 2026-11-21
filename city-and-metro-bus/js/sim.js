@@ -264,12 +264,12 @@
   // 地铁最短路与客流回溯的固定分段数：只影响计算顺序，线程数不影响结果
   const SKIM_BLOCKS = 16;
   const OD_OUT = ['carDem', 'hasCar', 'S', 'pT', 'pM', 'zTrips', 'zMetro', 'zAccess', 'zCW', 'zCT', 'desTot', 'desMetro',
-    'zDest', 'zDestM', 'fIn', 'fInM', 'fOut', 'fOutM', 'fP', 'fPM', 'DS', 'choices'];
+    'zDest', 'zDestM', 'fIn', 'fInM', 'fOut', 'fOutM', 'fP', 'fPM', 'DS', 'choices', 'zBgR', 'zBgF', 'bgDS', 'bgS'];
   const OD_FIXED = ['Z', 'NZ', 'B', 'odStart', 'odDest', 't0', 't1', 't2', 't3', 't4', 't5', 'hostZ', 'nx', 'ny', 'kmPerCell', 'blocks', 'pkO', 'pkR', 'ckR'];
   const OD_MOVE = { gtS: 1, tmS: 1, kmS: 1, trS: 1, brS: 1 };
   const OD_INPUT = ['N', 'co', 'cr', 'facW', 'facWe', 'odOk', 'skT', 'skK', 'zJ', 'cpk', 'park', 'vot', 'carAccess',
-    'walkW', 'occ', 'theta', 'fareFlat', 'fareKm0', 'fareStep', 'fareInc', 'fareCap', 'fareTab', 'fareFlatT', 'fareKm0T', 'fareStepT', 'fareIncT', 'fareCapT', 'fareTabT', 'fareFlatB', 'fareKm0B', 'fareStepB', 'fareIncB', 'fareCapB', 'fareTabB', 'bgShare', 'bgSpeed', 'bgWait', 'bgFare', 'roadKeep', 'accOk', 'gtS', 'tmS', 'kmS', 'trS', 'brS', 'perMin', 'capSh', 'capLz', 'habit', 'habAsc', 'habLite'];
-  function odWorkerMain() {
+    'walkW', 'occ', 'theta', 'fareFlat', 'fareKm0', 'fareStep', 'fareInc', 'fareCap', 'fareTab', 'fareFlatT', 'fareKm0T', 'fareStepT', 'fareIncT', 'fareCapT', 'fareTabT', 'fareFlatB', 'fareKm0B', 'fareStepB', 'fareIncB', 'fareCapB', 'fareTabB', 'bgShare', 'bgSpeed', 'bgWait', 'bgFare', 'roadKeep', 'bgRoad', 'bgSlow', 'accOk', 'gtS', 'tmS', 'kmS', 'trS', 'brS', 'perMin', 'capSh', 'capLz', 'habit', 'habAsc', 'habLite', 'hubAsc', 'hubFeed', 'hubEligible',
+    'bgNB', 'bgG', 'bgA', 'bgF', 'bgKM', 'bgZs', 'bgZg', 'bgZt', 'bgMax'];  function odWorkerMain() {
     let basis = null, id = 0, work = {};
     onmessage = function (e) {
       const m = e.data;
@@ -353,7 +353,7 @@
               const v = K[key]; data[key] = ArrayBuffer.isView(v) ? v.slice() : v;
               if (ArrayBuffer.isView(data[key])) transfer.push(data[key].buffer);
             }
-            data.acc = K.acc ? { zCov: K.acc.zCov, zl: K.acc.zl } : null;
+            data.acc = K.acc ? { zCov: K.acc.zCov, zl: K.acc.zl, zFeedS: K.acc.zFeedS, zFeedD: K.acc.zFeedD } : null;
             s.w.postMessage({ type: 'basis', id: r.key, data: data }, transfer); s.key = r.key;
           }
           const input = {}, transfer = [];
@@ -406,7 +406,7 @@
       if (m.type === 'load') {
         // 客流沿最短路树回溯：只用本段的路径表，结果与路径表一起交还（路径表留给同一输入的下一轮）
         const out = { load: new Float32Array(net.nE), accN: work.accN, stIn: new Float32Array(N), stOut: new Float32Array(N) };
-        metroLoadBlock(N, nn, net.eFrom, m.D, m.s0, m.pred, m.order, m.nOrd, m.s0, m.s0, m.s1, out);
+        metroLoadBlock(N, nn, net.eFrom, net.exits, m.D, m.s0, m.pred, m.order, m.nOrd, m.s0, m.s0, m.s1, out);
         postMessage({ req: m.req, part: m.part, s0: m.s0, s1: m.s1, load: out.load, stIn: out.stIn, stOut: out.stOut, pred: m.pred, order: m.order, nOrd: m.nOrd, D: m.D }, [out.load.buffer, out.stIn.buffer, out.stOut.buffer, m.pred.buffer, m.order.buffer, m.nOrd.buffer, m.D.buffer]);
         return;
       }
@@ -490,8 +490,7 @@
         try {
           if (s.netId !== j.req.nid) {
             const n = j.req.net;
-            s.w.postMessage({ type: 'net', id: j.req.nid, net: { N: n.N, nNodes: n.nNodes, nE: n.nE, outStart: n.outStart, outEdge: n.outEdge, eTo: n.eTo, eKm: n.eKm, eFrom: n.eFrom, eTram: n.eTram, eBus: n.eBus } });
-            s.netId = j.req.nid;
+            s.w.postMessage({ type: 'net', id: j.req.nid, net: { N: n.N, nNodes: n.nNodes, nE: n.nE, outStart: n.outStart, outEdge: n.outEdge, eTo: n.eTo, eKm: n.eKm, eFrom: n.eFrom, eTram: n.eTram, eBus: n.eBus, exits: n.exits } });            s.netId = j.req.nid;
           }
           if (j.type === 'load') { s.w.postMessage({ type: 'load', id: j.req.nid, req: j.req.id, part: j.part, s0: j.s0, s1: j.s1, D: j.D, pred: j.pred, order: j.order, nOrd: j.nOrd }, [j.D.buffer, j.pred.buffer, j.order.buffer, j.nOrd.buffer]); j.D = j.pred = j.order = j.nOrd = null; }
           else {
@@ -532,12 +531,17 @@
       if (inc > 0 && m > km0) { n = Math.ceil((m - km0) / step - 1e-9); f += n * inc; if (cap > 0 && f > cap) f = cap; }
       return { fare: f, tab: tab[n > tabN ? tabN : n] };
     }
-    const bgShare = K.bgShare || 0, bgSpeed = K.bgSpeed, bgWait = K.bgWait, bgFare = K.bgFare, roadKeep = K.roadKeep || 0;
+    const bgShare = K.bgShare || 0, bgSpeed = K.bgSpeed, bgWait = K.bgWait, bgFare = K.bgFare, roadKeep = K.roadKeep || 0, bgRoad = K.bgRoad != null ? K.bgRoad : -1, bgSlow = K.bgSlow || 1;
     const acc = K.acc, accOk = K.accOk, zCov = acc ? acc.zCov : null, zl = acc ? acc.zl : null, choices = K.choices;
     const pkO = K.pkO, pkR = K.pkR, ckR = K.ckR;
     const gtS = K.gtS, tmS = K.tmS, kmS = K.kmS, DS = K.DS, perMin = K.perMin, capSh = K.capSh, capLz = K.capLz;
     const carDem = K.carDem, hasCar = K.hasCar, S = K.S, pT = K.pT, pM = K.pM;
     const habit = K.habit, habAsc = K.habAsc || 0, habLite = K.habLite || 0;
+    const hubAsc = K.hubAsc || 0;   // 枢纽接驳（v2.9）：往返火车站、机场的旅客乘地铁的额外倾向（分钟，见 CFG.choice.hubAsc）
+    const HF = K.hubFeed, zFeedS = acc && HF ? acc.zFeedS : null, zFeedD = acc && HF ? acc.zFeedD : null;   // 枢纽旅客打车 / 坐公交到附近车站（见 CFG.choice.hubFeed）
+    // 背景交通线路（v2.9）：站到站广义时间 bgG、实际时间 bgA、渡轮比例 bgF、里程 bgKM；各小区最近的 3 个车站 bgZs 与接驳时间 bgZg / bgZt
+    const bgNB = K.bgNB || 0, bgG = K.bgG, bgA = K.bgA, bgF = K.bgF, bgKM = K.bgKM, bgZs = K.bgZs, bgZg = K.bgZg, bgZt = K.bgZt, bgMax = K.bgMax || 0;
+    const zBgR = K.zBgR, zBgF = K.zBgF, bgDS = K.bgDS, bgS = K.bgS;
     const zCW = K.zCW, zCT = K.zCT, zTrips = K.zTrips, zMetro = K.zMetro, zAccess = K.zAccess, zJ = K.zJ, blocks = K.blocks, desTot = K.desTot, desMetro = K.desMetro;
     const zDest = K.zDest, zDestM = K.zDestM, fIn = K.fIn, fInM = K.fInM, fOut = K.fOut, fOutM = K.fOutM, fP = K.fP, fPM = K.fPM;
     for (let k = odStart[i]; k < odStart[i + 1]; k++) {
@@ -560,15 +564,38 @@
         const carMoney = ck * cpk + park;
         let gtCar = ct + carAccess + carMoney / vot * 60, roadF = 1, tBg = 0;
         // 背景交通（v2.2）：非地铁出行中有 bgShare 比例乘坐电车、普通铁路、渡轮或步行，不占用道路；广义成本按比例混合
+        // 路面公交（v3.0，bgRoad ≥ 0）：公交与小巴走道路，行程按拥堵后的汽车时间 × bgSlow 加候车；每位乘客占用的路面为小汽车乘客的 bgRoad 倍
         if (bgShare > 0) {
-          const dk = U.dist(nx[o], ny[o], nx[d], ny[d]) * kmPerCell * 1.25;
-          tBg = dk / bgSpeed * 60 + bgWait;
-          gtCar = (1 - bgShare) * gtCar + bgShare * (tBg + bgFare / vot * 60); roadF = 1 - bgShare;
+          if (bgRoad >= 0) { tBg = ct * bgSlow + bgWait; roadF = 1 - bgShare * (1 - bgRoad); }
+          else { const dk = U.dist(nx[o], ny[o], nx[d], ny[d]) * kmPerCell * 1.25; tBg = dk / bgSpeed * 60 + bgWait; roadF = 1 - bgShare; }
+          gtCar = (1 - bgShare) * gtCar + bgShare * (tBg + bgFare / vot * 60);
+        }
+        // 背景交通线路（v2.9）：两端各取最近的 3 个车站，选广义时间最短的一对；与开车按 Logit 分担，最多 bgMax
+        let sB = 0, tBgL = 0, bgPair = -1, bgFf = 0, bgKm = 0;
+        if (bgNB > 0) {
+          const bo = ho * 3, bd2 = hd * 3;
+          let best = INF;
+          for (let a = 0; a < 3; a++) {
+            const sa = bgZs[bo + a]; if (sa < 0) break;
+            for (let b = 0; b < 3; b++) {
+              const sb = bgZs[bd2 + b]; if (sb < 0) break;
+              if (sa === sb) continue;
+              const v = bgG[sa * bgNB + sb]; if (v >= INF) continue;
+              const w = v + bgZg[bo + a] + bgZg[bd2 + b];
+              if (w < best) { best = w; bgPair = sa * bgNB + sb; tBgL = bgA[bgPair] + bgZt[bo + a] + bgZt[bd2 + b]; }
+            }
+          }
+          if (bgPair >= 0) {
+            sB = bgMax / (1 + Math.exp(theta * (best - gtCar)));
+            if (sB > 0.002) { gtCar = (1 - sB) * gtCar + sB * best; roadF *= 1 - sB; bgFf = bgF[bgPair]; bgKm = bgKM[bgPair]; }
+            else { sB = 0; bgPair = -1; }
+          }
         }
         // 地铁出行习惯（v2.3）：两端车站周边的成熟度（0–1）；偏好只加在地铁与开车的比较上，并有一部分非地铁出行不再上路
         const hb = habit ? (habit[ho] + habit[hd]) * 0.5 : 0;
         if (hb > 0) roadF *= 1 - habLite * hb;
-        let mTime = 0, fare = 0, mKm = 0, bs = -1, bt = -1, q = 0, pMc = 0;
+        let mTime = 0, fare = 0, mKm = 0, bs = -1, bt = -1, q = 0, pMc = 0, qH = 0, fM = 0, fS = -1, fT = -1, fTime = 0, fFare = 0, fKm = 0;
+        const hubT = j >= Z && K.hubEligible[j - Z] ? comp[5] : 0;
         let gtBest = gtCar, ind = 0, indSh = 0, indLz = 0;
         if (acc && (accOk || (o < Z && d < Z))) {
           const fo = zCov[o] || 0, fd = zCov[d] || 0;
@@ -578,7 +605,7 @@
             const pair = isOut ? k : ckR[k], cached = choices[pair];
             let winner = -1;
             if (cached >= 0) {
-              const A = lo[cached >> 2], Bq = ld[cached & 3];
+              const A = lo[cached >> 3], Bq = ld[cached & 7];
               bs = A.s; bt = Bq.s; bw = A.w + Bq.w;
               best = walkW * bw + gtS[bs * N + bt];
             } else if (cached === -2) for (let a = 0; a < lo.length; a++) {
@@ -589,7 +616,7 @@
                 const g = gtS[row + Bq.s];
                 if (g >= INF) continue;
                 const w = walkW * (A.w + Bq.w) + g;
-                if (w < best) { best = w; bs = A.s; bt = Bq.s; bw = A.w + Bq.w; winner = (a << 2) | b; }
+                if (w < best) { best = w; bs = A.s; bt = Bq.s; bw = A.w + Bq.w; winner = (a << 3) | b; }
               }
             }
             if (cached === -2) choices[pair] = winner;
@@ -617,6 +644,8 @@
               }
               pMc = 1 / (1 + Math.exp(theta * (gtM - gtCar - habAsc * hb)));
               q = fo * fd * pMc;
+              // 旅客带着行李、不开自家车，打车还要排队：同样的地铁条件下比一般出行更愿意乘地铁
+              qH = hubT > 0 && hubAsc > 0 ? fo * fd / (1 + Math.exp(theta * (gtM - gtCar - habAsc * hb - hubAsc))) : q;
               mTime = bw + tmS[bs * N + bt];
               if (gtM < gtBest) gtBest = gtM;
               // 地铁改善可达性带来的新增购物、休闲出行（Logit 组合效用的改善，按覆盖比例折算；有上限）
@@ -628,22 +657,54 @@
               }
             }
           }
+          // 枢纽旅客的接驳（v2.9 玩家反馈：火车站、机场客流太少）：住处步行范围以外的旅客，可以打车或坐公交到 hubFeed.km 以内的
+          // 地铁站，再乘地铁往返车站、机场（一般出行不这样做）。接驳按固定分钟 + 每公里分钟计入广义时间，最多 hubFeed.k 的人愿意这样走
+          if (hubT > 0 && zFeedS) {
+            const zc = isOut ? o : d, zh = isOut ? d : o, fc = zCov[zc] || 0, fh = zCov[zh] || 0, Lh = zl[zh], sF = zc < Z ? zFeedS[zc] : -1;
+            if (fc < 1 && fh > 0 && Lh && sF >= 0) {
+              const dk = zFeedD[zc], feed = HF.k * Math.min(1, Math.max(0, (HF.km - dk) / (HF.km - 1)));
+              let bh = -1, bestH = INF, bwH = 0;
+              if (feed > 0) for (let b = 0; b < Lh.length; b++) {
+                const Bq = Lh[b]; if (Bq.s === sF) continue;
+                const g2 = isOut ? gtS[sF * N + Bq.s] : gtS[Bq.s * N + sF];
+                if (g2 >= INF) continue;
+                const w = walkW * Bq.w + g2; if (w < bestH) { bestH = w; bh = Bq.s; bwH = Bq.w; }
+              }
+              if (bh >= 0) {
+                const a2 = isOut ? sF : bh, b2 = isOut ? bh : sF, fMin = HF.min + HF.perKm * dk;
+                fKm = kmS[a2 * N + b2]; fFare = fareFlat; let fN = 0;
+                if (fareInc > 0 && fKm > fareKm0) { fN = Math.ceil((fKm - fareKm0) / fareStep - 1e-9); fFare += fN * fareInc; if (fareCap > 0 && fFare > fareCap) fFare = fareCap; }
+                const gtF = bestH + fMin + fareTab[fN > fareTabN ? fareTabN : fN];
+                const pF = 1 / (1 + Math.exp(theta * (gtF - gtCar - habAsc * hb - hubAsc)));
+                fM = hubT * (1 - fc) * feed * fh * pF; fS = a2; fT = b2; fTime = bwH + fMin + tmS[a2 * N + b2];
+                if (gtF < gtBest) gtBest = gtF;
+              }
+            }
+          }
         }
-        const metroB = F0 * q, indM = ind * pMc;
-        const F = F0 + ind, metro = metroB + indM;
-        if (metro > 0) DS[bs * N + bt] += metro;
+        const metroB = F0 * q + (hubT > 0 ? hubT * (qH - q) : 0), indM = ind * pMc;
+        const F = F0 + ind, metro = metroB + indM + fM;
+        if (bs >= 0 && metro - fM > 0) DS[bs * N + bt] += metro - fM;
+        if (fM > 0) DS[fS * N + fT] += fM;
         const car = F - metro;
         // roadKeep（v2.6，伦敦）：改乘地铁的人空出的路面，有这样一部分又被别的车辆占满（公交与电车竞争、被压抑的小汽车出行），道路不会同比变空
         const onRoad = car + metro * roadKeep;
         if (onRoad > 0) { carDem[pi] += onRoad / occ * roadF; hasCar[ho] = 1; }
         S[0] += F; S[1] += metro; S[2] += car;
-        const tCar = bgShare > 0 ? (1 - bgShare) * (ct + carAccess * 0.5) + bgShare * tBg : ct + carAccess * 0.5;
-        S[3] += car * tCar + metro * mTime;
-        S[4] += car * tCar; S[5] += metro * mTime;
-        S[6] += metro * fare; S[7] += metro * mKm; S[8] += car * ck; S[9] += onRoad / occ * ck * roadF;
+        let tCar = bgShare > 0 ? (1 - bgShare) * (ct + carAccess * 0.5) + bgShare * tBg : ct + carAccess * 0.5;
+        if (sB > 0) {
+          tCar = (1 - sB) * tCar + sB * tBgL;
+          const nb = car * sB;   // 非地铁出行中乘铁路、渡轮的部分
+          zBgR[ho] += nb * (1 - bgFf); zBgF[ho] += nb * bgFf; bgDS[bgPair] += nb;
+          bgS[0] += nb; bgS[1] += nb * bgFf; bgS[2] += nb * bgKm;
+        }
+        const mW = metro - fM;   // 步行进站的地铁出行（其余为打车 / 公交接驳的枢纽旅客）
+        S[3] += car * tCar + mW * mTime + fM * fTime;
+        S[4] += car * tCar; S[5] += mW * mTime + fM * fTime;
+        S[6] += mW * fare + fM * fFare; S[7] += mW * mKm + fM * fKm; S[8] += car * ck; S[9] += onRoad / occ * ck * roadF;
         const cw = comp[HW] / F0;
-        if (cw > 0) { const tc = ((F0 - metroB) * tCar + metroB * mTime) * cw; S[10] += comp[HW]; S[11] += tc; zCW[ho] += comp[HW]; zCT[ho] += tc; }
-        for (let p = 0; p < NPK; p++) { const c = comp[p]; if (c) { pT[p] += c; pM[p] += c * q; } }
+        if (cw > 0) { const mb = F0 * q, tc = ((F0 - mb) * tCar + mb * mTime) * cw; S[10] += comp[HW]; S[11] += tc; zCW[ho] += comp[HW]; zCT[ho] += tc; }
+        for (let p = 0; p < NPK; p++) { const c = comp[p]; if (c) { pT[p] += c; pM[p] += c * (p === 5 ? qH : q) + (p === 5 ? fM : 0); } }
         if (ind > 0) { pT[SH] += indSh; pT[LZ] += indLz; pM[SH] += indSh * pMc; pM[LZ] += indLz * pMc; S[12] += ind; S[13] += indM; }
         zTrips[ho] += F; zMetro[ho] += metro;
         if (o < Z && d < Z) zAccess[o] += zJ[d] * Math.exp(-gtBest / 30);
@@ -652,12 +713,12 @@
         // 吸引统计：去程按目的地计（小区按目的，重要设施单独计）；设施的返程（离开设施）单独计
         if (isOut) {
           if (d < Z) {
-            for (let p = 0; p < NPK; p++) { const c = comp[p]; if (c) { zDest[p * Z + d] += c; zDestM[p * Z + d] += c * q; } }
+            for (let p = 0; p < NPK; p++) { const c = comp[p]; if (c) { zDest[p * Z + d] += c; zDestM[p * Z + d] += c * (p === 5 ? qH : q) + (p === 5 ? fM : 0); } }
             if (ind > 0) { zDest[SH * Z + d] += indSh; zDest[LZ * Z + d] += indLz; zDestM[SH * Z + d] += indSh * pMc; zDestM[LZ * Z + d] += indLz * pMc; }
           } else {
             const f = d - Z;
             fIn[f] += F; fInM[f] += metro;
-            for (let p = 0; p < NPK; p++) if (comp[p]) { fP[f * NPK + p] += comp[p]; fPM[f * NPK + p] += comp[p] * q; }
+            for (let p = 0; p < NPK; p++) if (comp[p]) { fP[f * NPK + p] += comp[p]; fPM[f * NPK + p] += comp[p] * (p === 5 ? qH : q) + (p === 5 ? fM : 0); }
             if (ind > 0) { fP[f * NPK + SH] += indSh; fP[f * NPK + LZ] += indLz; fPM[f * NPK + SH] += indSh * pMc; fPM[f * NPK + LZ] += indLz * pMc; }
           }
         } else if (o >= Z) { const f = o - Z; fOut[f] += F; fOutM[f] += metro; }
@@ -690,19 +751,19 @@
     nOrd[row] = no;
     const ob = row * N;
     for (let t = 0; t < N; t++) {
+      const exit = net.exits[t];
       // 至少包含一段实际乘车（乘车里程 > 0）；只靠站外步行连通的路径不算地铁行程
-      if (dist[t] >= INF || t === s || !(dkm[t] > 0)) { gt[ob + t] = INF; tm[ob + t] = 0; km[ob + t] = 0; tr[ob + t] = 0; br[ob + t] = 0; continue; }
-      gt[ob + t] = dist[t] - tpen; tm[ob + t] = dtm[t]; km[ob + t] = dkm[t]; tr[ob + t] = dtr[t]; br[ob + t] = dbr[t];
-    }
+      if (dist[exit] >= INF || t === s || !(dkm[exit] > 0)) { gt[ob + t] = INF; tm[ob + t] = 0; km[ob + t] = 0; tr[ob + t] = 0; br[ob + t] = 0; continue; }
+      gt[ob + t] = dist[exit] - tpen; tm[ob + t] = dtm[exit]; km[ob + t] = dkm[exit]; tr[ob + t] = dtr[exit]; br[ob + t] = dbr[exit];    }
   }
   // 车站 s0..s1 出发的客流沿最短路树回溯到各区间。D 的第 0 行对应车站 dBase，路径表的第 0 行对应车站 r0。
   // 会原样复制到工作线程执行；每段各自累加，再按段的顺序合计（见 iterate），线程多少不影响结果
-  function metroLoadBlock(N, nn, eFrom, D, dBase, pred, order, nOrd, r0, s0, s1, out) {
+  function metroLoadBlock(N, nn, eFrom, exits, D, dBase, pred, order, nOrd, r0, s0, s1, out) {
     const load = out.load, accN = out.accN, stIn = out.stIn, stOut = out.stOut;
     for (let s = s0; s < s1; s++) {
       const row = (s - dBase) * N;
       let any = false;
-      for (let tt = 0; tt < N; tt++) { const v = D[row + tt]; if (v > 0) { accN[tt] += v; stIn[s] += v; stOut[tt] += v; any = true; } }
+      for (let tt = 0; tt < N; tt++) { const v = D[row + tt]; if (v > 0) { accN[exits[tt]] += v; stIn[s] += v; stOut[tt] += v; any = true; } }
       if (!any) continue;
       const pb = (s - r0) * nn;
       for (let q = nOrd[s - r0] - 1; q > 0; q--) {
@@ -905,7 +966,11 @@
     if (acc && fn && this.crossFee) for (const id of Object.keys(this.crossFee)) {
       const k = fn.ids.indexOf(id), f = fn.list[k], entries = acc.zl[this.Z + k];
       if (!f || !f.ext || !f.ext.gate || !entries) continue;
-      for (const e of entries) if (CM.Fac.isPortalStation(this.net.C.stations[e.s], f)) e.w = 1 + this.crossMin(f);
+      const minutes = 1 + this.crossMin(f);
+      for (const e of entries) if (e.w !== minutes && CM.Fac.isPortalStation(this.net.C.stations[e.s], f)) {
+        e.w = minutes;
+        this._odWorkerVersion = null;
+      }
     }
     this.solveLimit = cycles || 2; this.settled = false; this.gen = null; this.epoch = (this.epoch || 0) + 1;
   };
@@ -993,7 +1058,7 @@
     const c = CFG.choice, y = this.year;
     return {
       vot: U.interp(c.vot, y), cpk: U.interp(c.carCostPerKm, y), park: U.interp(c.parking, y), occ: U.interp(c.occupancy, y),
-      theta: c.theta, walkW: c.walkW, waitW: c.waitW, tpen: c.transferPen, opn: c.outTransferPen, carAccess: c.carAccess,
+      theta: c.theta, walkW: c.walkW, waitW: c.waitW, tpen: c.transferPen, xpen: c.xferBase != null ? c.xferBase : c.transferPen, opn: c.outTransferPen, carAccess: c.carAccess,
     };
   };
   // 票价（v2.1 第二轮）：统一票价（flat）或按里程计费（dist：起步价 flat 含 km0 公里，之后每 step 公里加 inc，最高 cap，0 为不封顶）。
@@ -1328,7 +1393,8 @@
       if(best>limit)continue;const path=[];let v=end,guard=0;while(v>=0&&guard++<city.V){path.push([city.vx[v],city.vy[v]]);v=tree.pred.get(v)??-1;}path.reverse();path.unshift([from.x,from.y]);path.push([s.x,s.y]);links.push({station:s.id,metres:best,path});
     }return links;
   };
-  // 小区与重要设施节点的接驳表：可步行到达的车站（最多 4 个）、覆盖比例与平均步行时间
+  // 小区与重要设施节点的接驳表：可步行到达的车站（最多 ACC_MAX 个，v2.9 由 4 个增至 6 个）、覆盖比例与平均步行时间
+  const ACC_MAX = 6;   // 接驳组合缓存按每端 3 位编码（a << 3 | b），不能超过 8
   // 分步执行（v2.5 性能）：月结时每处理一批车站让出主线程；结果与一次算完相同
   Model.prototype.computeAccess = function (C) { const it = this.computeAccessGen(C); let r = it.next(); while (!r.done) r = it.next(); return r.value; };
   Model.prototype.computeAccessGen = function* (C) {
@@ -1372,6 +1438,18 @@
           const d0 = U.dist(st.x, st.y, city.vx[v], city.vy[v]) * CFG.CELL_M;
           if (d0 < D_[v]) { if (D_[v] >= INF) touched.push(v); D_[v] = d0; pred[v] = -1; heap.push(d0, v); }
         }
+        // 车站所在格四角都不通步行（四周是快速路、没有街道的地块）：出入口接到 2 格内最近的步行路口，路程按直线 × 1.3（v2.9 玩家反馈：
+        // 车站明明在运营，进站人数却是 0）
+        if (!heap.n) for (let j = Math.max(0, cj - 2); j <= Math.min(city.H, cj + 3); j++) for (let i = Math.max(0, ci - 2); i <= Math.min(city.W, ci + 3); i++) {
+          const v = j * VW + i; if (walk.deg[v] === 0) continue;
+          const x = city.vx[v], y = city.vy[v], distance = U.dist(st.x, st.y, x, y);
+          const d0 = distance * CFG.CELL_M * 1.3;
+          if (distance > 2 || d0 > maxM * 0.5 || d0 >= D_[v]) continue;
+          // 不用直线接驳跨过水面，跨河步行继续走实际步行网。
+          let dry = true;
+          for (let q = 0.25; q < 1; q += 0.25) if (city.waterDistAt(st.x + (x - st.x) * q, st.y + (y - st.y) * q) < 0) { dry = false; break; }
+          if (dry) { if (D_[v] >= INF) touched.push(v); D_[v] = d0; pred[v] = -1; heap.push(d0, v); }
+        }
         if (!heap.n) continue;
         accessible[k] = 1;
         while (heap.n) {
@@ -1412,8 +1490,7 @@
           if (rl) for (const f of rl) { let m = eMap.get(f); if (!m) { m = new Map(); eMap.set(f, m); } const d0 = m.get(k); if (d0 === undefined || cd < d0) m.set(k, cd); }
           const w = city.pop[c] + city.jobs[c];
           if (w <= 0) continue;
-          if (cd <= Math.min(750, myMax)) catchPop[k] += city.pop[c];
-          const z = city.zoneOf(c);
+          if (cd <= Math.min(750, myMax)) catchPop[k] += city.pop[c] + city.jobs[c];          const z = city.zoneOf(c);
           let m = zMap.get(z); if (!m) { m = new Map(); zMap.set(z, m); }
           const e = m.get(k) || [0, 0]; e[0] += w; e[1] += w * cd; m.set(k, e);
         }
@@ -1436,8 +1513,10 @@
       for (const v of touched) D_[v] = INF;
     }
     yield;
+    // 背景交通接驳（v2.9）：车站旁有运营中的铁路站或码头时吸引力更高，感知步行时间缩短，更多人来这里坐地铁（见 BgNet.links）
+    const bgLinks = CM.BgNet ? CM.BgNet.links(this.year, C, city) : null, wOf = function (w, s) { return bgLinks ? Math.max(0.2, w - bgLinks.bonus[s]) : w; };
     // 小区接驳表（下标 0…Z−1 为小区，Z…Z+F−1 为重要设施）
-    const zl = new Array(NZ).fill(null), zCov = new Float32Array(NZ), zWalk = new Float32Array(NZ);
+    const zl = new Array(NZ).fill(null), zCov = new Float32Array(NZ), zWalk = new Float32Array(NZ), zTot = new Float64Array(Z);
     for (let z = 0; z < Z; z++) {
       let tot = 0, cov = 0, wsum = 0;
       for (const c of this.zoneCells[z]) {
@@ -1445,14 +1524,31 @@
         tot += w;
         if (cellWalk[c] <= (cellMax[c] || maxM)) { cov += w; wsum += w * cellWalk[c]; }
       }
-      zCov[z] = tot > 0 ? cov / tot : 0;
+      zCov[z] = tot > 0 ? cov / tot : 0; zTot[z] = tot;
       zWalk[z] = cov > 0 ? wsum / cov / mpm : 0;
       const m = zMap.get(z);
       if (m && zCov[z] > 0) {
         const arr = [];
-        m.forEach(function (e, s) { arr.push({ s: s, w: e[1] / e[0] / mpm, share: e[0] / Math.max(1, tot) }); });
+        m.forEach(function (e, s) { arr.push({ s: s, w: wOf(e[1] / e[0] / mpm, s), share: e[0] / Math.max(1, tot) }); });
         arr.sort(function (a, b) { return a.w - b.w; });
-        zl[z] = arr.slice(0, 4);
+        zl[z] = arr.slice(0, ACC_MAX);
+      }
+    }
+    // 每个运营车站至少出现在一个小区的接驳表里（v2.9 玩家反馈：车站进站人数莫名变成 0）：线网很密时，附近小区各自更近的
+    // 车站已占满接驳表，这座站就一个乘客也没有。这样的站补进它覆盖人口最多的小区，替换该小区表里最远的一座
+    {
+      const cnt = new Uint16Array(N), best = new Array(N).fill(null);
+      for (let z = 0; z < Z; z++) if (zl[z]) for (const e of zl[z]) cnt[e.s]++;
+      zMap.forEach(function (m, z) { if (z >= Z || !zl[z]) return; m.forEach(function (e, s) { if (!cnt[s] && (!best[s] || e[0] > best[s].w)) best[s] = { z: z, w: e[0], d: e[1] / e[0] }; }); });
+      for (let s2 = 0; s2 < N; s2++) {
+        const b = best[s2]; if (!b || cnt[s2] || (C.serviced && !C.serviced[s2])) continue;
+        const L = zl[b.z]; let j = L.length;
+        if (j >= ACC_MAX) { j = -1; for (let q = L.length - 1; q >= 0; q--) if (cnt[L[q].s] > 1) { j = q; break; } }   // 只替换在别处也有的车站
+        if (j < 0) continue;
+        if (j < L.length) cnt[L[j].s]--;
+        L[j] = { s: s2, w: b.d / mpm, share: b.w / Math.max(1, zTot[b.z]) };
+        L.sort(function (x, y) { return x.w - y.w; });
+        cnt[s2] = 1;
       }
     }
     for (let k = 0; k < F; k++) {
@@ -1463,9 +1559,9 @@
       const m = fMap.get(k);
       if (m && cov > 0) {
         const arr = [];
-        m.forEach(function (e, s) { arr.push({ s: s, w: e[1] / e[0] / mpm, share: e[0] / n }); });
+        m.forEach(function (e, s) { arr.push({ s: s, w: wOf(e[1] / e[0] / mpm, s), share: e[0] / n }); });
         arr.sort(function (a, b) { return a.w - b.w; });
-        zl[Z + k] = arr.slice(0, 4);
+        zl[Z + k] = arr.slice(0, ACC_MAX);
       }
       // 按出入口（场地边缘）计：能步行到达边缘的车站服务全部到访者，步行时间 = 到边缘 + 场内步行
       let em = eMap.get(k);
@@ -1498,17 +1594,16 @@
       }
       if (em && em.size) {
         const arr = [], inn = fn.inner[k] + fn.reach[k];
-        em.forEach(function (d, s) { arr.push({ s: s, w: (d + inn) / mpm, share: 1 }); });
+        em.forEach(function (d, s) { arr.push({ s: s, w: wOf((d + inn) / mpm, s), share: 1 }); });
         arr.sort(function (a, b) { return a.w - b.w; });
-        zl[Z + k] = arr.slice(0, 4); zCov[Z + k] = 1; zWalk[Z + k] = arr[0].w;
+        zl[Z + k] = arr.slice(0, ACC_MAX); zCov[Z + k] = 1; zWalk[Z + k] = arr[0].w;
       }
     }
     // 地图外设施的接驳口（v2.1）：在地图边缘接驳口建成并接入线路的车站，直接服务该设施的全部接驳出行（步行约 1 分钟）
     if (fn && CM.Fac) for (let k = 0; k < F; k++) {
       const f = fn.list[k]; if (!f.ext) continue;
       if (f.ext.gate) {
-        const entries = CM.Fac.gateStations(f, C).slice(0, 4), walk = 1 + this.crossMin(f);
-        zCov[Z + k] = entries.length ? 1 : 0;
+        const entries = CM.Fac.gateStations(f, C).slice(0, ACC_MAX), walk = 1 + this.crossMin(f);        zCov[Z + k] = entries.length ? 1 : 0;
         zWalk[Z + k] = entries.length ? 1 : 0;
         zl[Z + k] = entries.length ? entries.map(function (e) { return { s: e.i, w: walk, share: 1 }; }) : null;
         continue;
@@ -1518,11 +1613,21 @@
         zCov[Z + k] = 1; zWalk[Z + k] = 1; zl[Z + k] = [{ s: link.i, w: 1 + this.crossMin(f), share: 1 }];
       }
     }
+    // 枢纽旅客的接驳车站（v2.9）：各小区中心直线 hubFeed.km 以内最近的运营车站（打车或坐公交过去），供 odOrigin 计算
+    const HF = CFG.choice.hubFeed, zFeedS = new Int32Array(Z).fill(-1), zFeedD = new Float32Array(Z);
+    if (HF && this.zCx) {
+      const kmC = CFG.CELL_M / 1000, lim = HF.km / kmC, sv = [];
+      for (let s = 0; s < N; s++) if (!C.serviced || C.serviced[s]) sv.push(s);
+      for (let z = 0; z < Z; z++) {
+        const x = this.zCx[z], y = this.zCy[z]; let bd = lim, bs2 = -1;
+        for (const s of sv) { const st = C.stations[s], dx = st.x - x; if (dx > bd || -dx > bd) continue; const d = Math.hypot(dx, st.y - y); if (d < bd) { bd = d; bs2 = s; } }
+        if (bs2 >= 0) { zFeedS[z] = bs2; zFeedD[z] = bd * kmC; }
+      }
+    }
     // 人口覆盖率
     let pc = 0, pt = 0;
     for (let c = 0; c < nC; c++) { pt += city.pop[c]; if (cellWalk[c] <= maxM) pc += city.pop[c]; }
-    return { cellWalk: cellWalk, cellStation: cellStation, cellMax: cellMax, zl: zl, zCov: zCov, zWalk: zWalk, trees: trees, accessible: accessible, catchPop: catchPop, transfers: transfers, coverage: pt > 0 ? pc / pt : 0, NZ: NZ, facKey: fn ? fn.key : '' };
-  };
+    return { cellWalk: cellWalk, cellStation: cellStation, cellMax: cellMax, zl: zl, zCov: zCov, zWalk: zWalk, trees: trees, accessible: accessible, catchPop: catchPop, transfers: transfers, coverage: pt > 0 ? pc / pt : 0, zFeedS: zFeedS, zFeedD: zFeedD, NZ: NZ, facKey: fn ? fn.key : '', bgLinks: bgLinks };  };
 
   Model.prototype.buildMetro = function (C, acc0) {
     const N = C.stations.length, R = C.routes.length, mc = CFG.metro;
@@ -1530,21 +1635,28 @@
     const platBase = new Int32Array(R);
     let nNodes = N;
     for (let r = 0; r < R; r++) { platBase[r] = nNodes; nNodes += C.routes[r].stIdx.length; }
+    // 换乘站分开车站入口、出口和各交路的候车点，进出站不经过站内换乘通道。
+    const transfers = C.stationLines.map(function (lines) { return lines.size > 1 ? [] : null; });
+    const exits = Int32Array.from(transfers, function (list, s) { return list ? nNodes++ : s; });
     // bus 与 tram 平行：各自标记 ride 边，skim 分别累计电车/公交里程，拆段计费按三制式各算一段
     const E = { from: [], to: [], type: [], route: [], leg: [], dir: [], st: [], km: [], t0: [], wm: [], tram: [], bus: [] };
     const push = function (f, t, ty, r, leg, dir, st, km, t0, wm, tram, bus) {
-      E.from.push(f); E.to.push(t); E.type.push(ty); E.route.push(r); E.leg.push(leg); E.dir.push(dir); E.st.push(st); E.km.push(km); E.t0.push(t0); E.wm.push(wm); E.tram.push(tram ? 1 : 0); E.bus.push(bus ? 1 : 0);
-      return E.from.length - 1;
+      E.from.push(f); E.to.push(t); E.type.push(ty); E.route.push(r); E.leg.push(leg); E.dir.push(dir); E.st.push(st); E.km.push(km); E.t0.push(t0); E.wm.push(wm); E.tram.push(tram ? 1 : 0); E.bus.push(bus ? 1 : 0);      return E.from.length - 1;
     };
     const rideEdge = [], boardEdge = [];
     for (let r = 0; r < R; r++) {
       const rt = C.routes[r], n = rt.stIdx.length;
       const be = new Int32Array(n);
       for (let k = 0; k < n; k++) {
-        // 天地换乘车站的非主站台层：上下车各多走一段垂直通道（其余车站为 0，与原模型相同）
+        const s = rt.stIdx[k], plat = platBase[r] + k, list = transfers[s];
         const lv = rt.lvPen && rt.lvPen[k] ? mc.levelXferMin : 0;
-        be[k] = push(rt.stIdx[k], platBase[r] + k, 0, r, k, 0, rt.stIdx[k], 0, lv, 0);
-        push(platBase[r] + k, rt.stIdx[k], 1, r, k, 0, rt.stIdx[k], 0, lv, 0);
+        const queue = list ? nNodes++ : s;
+        if (list) {
+          list.push({ route: r, line: rt.lineId, plat: plat, queue: queue });
+          push(s, queue, 4, r, k, 0, s, 0, lv, 0);
+        }
+        be[k] = push(queue, plat, 0, r, k, 0, s, 0, list ? 0 : lv, 0);
+        push(plat, exits[s], 1, r, k, 0, s, 0, lv, 0);
       }
       const nLegs = rt.legSec.length;
       const re = new Int32Array(nLegs * 2);
@@ -1556,10 +1668,26 @@
       }
       rideEdge.push(re); boardEdge.push(be);
     }
-    for (const tr of acc.transfers) push(tr.a, tr.b, 3, -1, -1, 0, tr.b, 0, tr.m / CFG.walk.mPerMin, tr.m);
+    transfers.forEach(function (list, s) {
+      if (!list) return;
+      for (const a of list) for (const b of list) {
+        if (a.route === b.route) continue;
+        const kind = a.line === b.line ? null : CM.Metro.xferKind(C, s, a.line, b.line);
+        const walk = !kind ? 0 : kind.kind === 'level' ? 2 * mc.levelXferMin : 2 * kind.off;
+        push(a.plat, b.queue, 4, b.route, -1, 0, s, 0, walk, 0);
+      }
+    });
+    const walkEnds = new Set();
+    for (const tr of acc.transfers) {
+      const time = tr.m / CFG.walk.mPerMin;
+      push(tr.a, tr.b, 3, -1, -1, 0, tr.b, 0, time, tr.m);
+      if (exits[tr.a] !== tr.a) push(exits[tr.a], tr.b, 3, -1, -1, 0, tr.b, 0, time, tr.m);
+      if (exits[tr.b] !== tr.b) walkEnds.add(tr.b);
+    }
+    for (const s of walkEnds) push(s, exits[s], 5, -1, -1, 0, s, 0, 0, 0);
     const nE = E.from.length;
     const net = {
-      C: C, N: N, R: R, nNodes: nNodes, nE: nE, platBase: platBase, acc: acc, rideEdge: rideEdge, boardEdge: boardEdge,
+      C: C, N: N, R: R, nNodes: nNodes, nE: nE, platBase: platBase, exits: exits, acc: acc, rideEdge: rideEdge, boardEdge: boardEdge,
       eFrom: Int32Array.from(E.from), eTo: Int32Array.from(E.to), eType: Uint8Array.from(E.type), eRoute: Int32Array.from(E.route),
       eLeg: Int32Array.from(E.leg), eDir: Uint8Array.from(E.dir), eSt: Int32Array.from(E.st), eKm: Float32Array.from(E.km), eT0: Float32Array.from(E.t0), eWm: Float32Array.from(E.wm), eTram: Uint8Array.from(E.tram), eBus: Uint8Array.from(E.bus),
       routeKey: C.routes.map(function (r) { return r.lineId + ':' + (r.svc || '') + ':' + r.stIds.join(','); }), isSvc: Uint8Array.from(C.routes, function (r) { return r.svc ? 1 : 0; }),
@@ -1583,6 +1711,22 @@
       }
       net.boardShare = share;
     }
+    // 共用区间（v3.0 玩家反馈：大小交路、支线的满载率不一致）：同一线路、同一方向、前后两站相同的区间，各交路（含支线在主干上的部分）
+    // 合成一个区间。装载后合计客流按各交路的运力分摊，同一区间的满载率一致；智能调度按合计断面配车，差额加给小交路（见 shareSections）
+    {
+      const byKey = new Map();
+      for (let r = 0; r < R; r++) {
+        const rt = C.routes[r], n = rt.stIdx.length, re = rideEdge[r];
+        for (let k = 0; k < rt.legSec.length; k++) for (let d = 0; d < 2; d++) {
+          const a = rt.stIdx[k], b = rt.stIdx[(k + 1) % n], key = rt.lineId + '|' + (d ? b + '>' + a : a + '>' + b);
+          let L = byKey.get(key); if (!L) byKey.set(key, L = []);
+          L.push({ r: r, e: re[2 * k + d], d: d });
+        }
+      }
+      const sec = []; byKey.forEach(function (L) { if (L.length > 1 && new Set(L.map(function (x) { return x.r; })).size > 1) sec.push(L); });
+      net.sharedSec = sec.length ? sec : null;
+      if (net.sharedSec) { const own = new Uint8Array(nE); for (const L of sec) for (const x of L) own[x.e] = 1; net.sharedEdge = own; }
+    }
     const deg = new Int32Array(nNodes + 1);
     for (let e = 0; e < nE; e++) deg[net.eFrom[e]]++;
     const os = new Int32Array(nNodes + 1);
@@ -1593,6 +1737,36 @@
     return net;
   };
 
+  // 共用区间（v3.0）：① 同一区间各交路的合计客流按运力（频率 × 载客量）分摊，满载率一致；
+  // ② 智能调度的所需频率：先按各交路独有的区间配车，共用区间按合计断面补足差额，差额加给其中最短的交路（小交路；等长的支线平分）。返回各路线的所需频率（环线不参与，为 null）
+  Model.prototype.shareSections = function (net, P, plan, p) {
+    const C = net.C, mc = CFG.metro, R = net.R, sec = net.sharedSec, tLF = mc.targetLF;
+    const capOf = function (r) { const fp = plan && plan[r]; return fp ? fp.cap : C.routes[r].cap; };
+    const fOf = function (x) { return Math.max(0, P.freqDir[2 * x.r + (C.routes[x.r].loop ? x.d : 0)] || 0); };   // 没有开车的交路不分客流
+    for (const L of sec) {
+      let tot = 0, w = 0; for (const x of L) { tot += P.load[x.e]; w += fOf(x) * capOf(x.r); }
+      if (w > 0) for (const x of L) P.load[x.e] = tot * fOf(x) * capOf(x.r) / w;
+    }
+    const need = new Array(R).fill(null), inv = new Uint8Array(R);
+    for (const L of sec) for (const x of L) inv[x.r] = 1;
+    for (let r = 0; r < R; r++) {
+      if (!inv[r] || C.routes[r].loop) continue;
+      const re = net.rideEdge[r], cap = capOf(r); let mx = 0;
+      for (let q = 0; q < re.length; q++) { const e = re[q]; if (!net.sharedEdge[e] && P.load[e] > mx) mx = P.load[e]; }
+      need[r] = Math.max(mx / (cap * tLF), Model.serviceFloor(C.routes[r], p));
+    }
+    const req = sec.map(function (L) { let t = 0; for (const x of L) t += P.load[x.e]; return t / tLF; });
+    const ord = sec.map(function (_, i) { return i; }).sort(function (a, b) { return req[b] - req[a]; });
+    for (const i of ord) {
+      const rs = []; let have = 0;
+      for (const x of sec[i]) if (need[x.r] != null && rs.indexOf(x.r) < 0) { rs.push(x.r); have += need[x.r] * capOf(x.r); }
+      const def = req[i] - have; if (!rs.length || def <= 0) continue;
+      let minL = Infinity; for (const r of rs) minL = Math.min(minL, C.routes[r].lenM);
+      const pick = rs.filter(function (r) { return C.routes[r].lenM <= minL * 1.02; });
+      for (const r of pick) need[r] += def / pick.length / capOf(r);
+    }
+    return need;
+  };
   // ---------------- 运算上下文 ----------------
   Model.prototype.newCtx = function (nPer, dt) {
     const ctx = { per: [], nPer: nPer, dt: dt || 'wd' };
@@ -1605,6 +1779,10 @@
     if (!P.zDest || P.zDest.length !== NPK * Z) { P.zDest = new Float32Array(NPK * Z); P.zDestM = new Float32Array(NPK * Z); }
     if (!P.zCW || P.zCW.length !== Z) { P.zCW = new Float32Array(Z); P.zCT = new Float32Array(Z); }
     if (!P.fIn || P.fIn.length !== F) { P.fIn = new Float32Array(F); P.fInM = new Float32Array(F); P.fOut = new Float32Array(F); P.fOutM = new Float32Array(F); P.fP = new Float32Array(NPK * F); P.fPM = new Float32Array(NPK * F); }
+    // 背景交通线路（v2.9）：各小区出发的铁路 / 渡轮出行与站到站需求（没有线路数据的地图不分配）
+    const nb = CM.BgNet ? CM.BgNet.size() : 0;
+    if (nb) { if (!P.zBgR || P.zBgR.length !== Z) { P.zBgR = new Float32Array(Z); P.zBgF = new Float32Array(Z); } if (!P.bgDS || P.bgDS.length !== nb * nb) P.bgDS = new Float32Array(nb * nb); }
+    else { P.zBgR = P.zBgF = P.bgDS = null; }
   };
   Model.prototype.makePer = function (net) {
     const Z = this.Z, nA = this.road.nA, lay = this.od && this.od.skim;
@@ -1699,7 +1877,7 @@
     // 没有任何路线开行的车站这一时段关站，不能进出，也不能借站外换乘穿过
     open.fill(0);
     for (let r = 0; r < net.R; r++) if (Model.boardFreq(P, net, r) > 0) for (const s of net.C.routes[r].stIdx) open[s] = 1;
-    let same=store.valid&&store.skimKey===key&&store.transferPen===prm.tpen;store.valid=false;
+    let same=store.valid&&store.skimKey===key&&store.transferPen===prm.xpen;store.valid=false;
     for (let e = 0; e < nE; e++) {
       const before=cost[e],beforeT=tAct[e];cost[e]=0;tAct[e]=0;
       const ty = net.eType[e], r = net.eRoute[e];
@@ -1710,7 +1888,7 @@
           if (shareL) for (const o of shareL) fr += Model.boardFreq(P, net, o);
           const f = Math.max(0.5, fr);
           const w = 60 / (2 * f);
-          cost[e] = prm.waitW * w + prm.tpen + P.stDelay[net.eSt[e]];
+          cost[e] = prm.waitW * w + prm.xpen + P.stDelay[net.eSt[e]];
           tAct[e] = w + P.stDelay[net.eSt[e]] * 0.5;
           if (net.eT0[e] > 0) { cost[e] += prm.walkW * net.eT0[e]; tAct[e] += net.eT0[e]; }   // 天地换乘的垂直通道
         } else cost[e] = INF;
@@ -1721,7 +1899,11 @@
         if (Model.dirFreq(P, net, r, net.eDir[e]) > 0) { cost[e] = net.eT0[e] * P.crowd[e]; tAct[e] = net.eT0[e]; }
         else cost[e] = INF;
       } else if (ty === 3) {
-        if (open[net.eFrom[e]] && open[net.eTo[e]]) { cost[e] = prm.walkW * net.eT0[e] + prm.opn; tAct[e] = net.eT0[e]; }
+        const from = net.eFrom[e];
+        if ((from >= N || open[from]) && open[net.eTo[e]]) { cost[e] = prm.walkW * net.eT0[e] + prm.opn + (prm.tpen - prm.xpen); tAct[e] = net.eT0[e]; }   // 站外换乘沿用原来的总惩罚
+        else cost[e] = INF;
+      } else if (ty === 4) {
+        if (Model.boardFreq(P, net, r) > 0) { cost[e] = prm.walkW * net.eT0[e]; tAct[e] = net.eT0[e]; }
         else cost[e] = INF;
       }
       if(before!==cost[e]||beforeT!==tAct[e])same=false;
@@ -1732,7 +1914,7 @@
     // 工作线程分段计算（大线网，v2.3）：费用数组各段各拷一份交给线程，结果按行拷回
     if (!this.syncSolve && N >= 48 && SkimPool.ready()) {
       const reuse = store.parts; store.parts = null;
-      const req = SkimPool.submit(net, cost.slice(), tAct.slice(), prm.tpen, reuse);
+      const req = SkimPool.submit(net, cost.slice(), tAct.slice(), prm.xpen, reuse);
       while (!req.done && !req.failed) yield WAIT;
       if (!req.failed) {
         for (const r of req.parts) {
@@ -1742,7 +1924,7 @@
           if ((r.part & 3) === 3) yield;
         }
         store.parts = req.parts; store.pred = store.order = store.nOrd = null;
-        store.skimKey=key;store.transferPen=prm.tpen;store.valid=true;
+        store.skimKey=key;store.transferPen=prm.xpen;store.valid=true;
         return;
       }
     }
@@ -1750,10 +1932,10 @@
     store.parts = null;
     if (!store.pred) { store.pred = new Int32Array(N * nn); store.order = new Int32Array(N * nn); store.nOrd = new Int32Array(N); }
     for (let s = 0; s < N; s++) {
-      metroTree(net, cost, tAct, s, work, store, this.heap, prm.tpen);
+      metroTree(net, cost, tAct, s, work, store, this.heap, prm.xpen);
       if ((s & 3) === 3) yield;
     }
-    store.skimKey=key;store.transferPen=prm.tpen;store.valid=true;
+    store.skimKey=key;store.transferPen=prm.xpen;store.valid=true;
   };
 
   // 把某时段的汽车行程表搬到需求表 od 的小区对排列上（v2.7.1）。原有的小区对保留原值；新出现的小区对按该出发小区已算出的
@@ -1850,6 +2032,8 @@
     const kmPerCell = CFG.CELL_M / 1000;
     P.desTot.fill(0); P.desMetro.fill(0); P.zTrips.fill(0); P.zMetro.fill(0); P.zAccess.fill(0); P.zCW.fill(0); P.zCT.fill(0);
     P.zDest.fill(0); P.zDestM.fill(0); P.fIn.fill(0); P.fInM.fill(0); P.fOut.fill(0); P.fOutM.fill(0); P.fP.fill(0); P.fPM.fill(0);
+    const bgn = P.bgDS && CM.BgNet ? CM.BgNet.forModel(this, prm) : null, bgS = new Float64Array(4);
+    if (P.bgDS) { P.zBgR.fill(0); P.zBgF.fill(0); P.bgDS.fill(0); }
     const BW = this.BW, ZW = this.ZW;
     if (!this.zoneBlock) this.zoneBlock = Int32Array.from({ length: Z }, function (_, z) { return (((z / ZW) | 0) >> 1) * BW + ((z % ZW) >> 1); });
     const blocks = this.zoneBlock;
@@ -1868,12 +2052,14 @@
       fareKm0: fp.km0, fareStep: fp.step, fareInc: fp.inc, fareCap: fp.cap, fareTab: Model.fareTab(this.fare, this.year, prm.vot),
       fareFlatT: (this.fareTram ? this.fareTram.flat : 0), fareKm0T: fpT.km0, fareStepT: fpT.step, fareIncT: fpT.inc, fareCapT: fpT.cap, fareTabT: Model.fareTab(this.fareTram || CFG.tram.fareDefault, this.year, prm.vot),
       fareFlatB: (this.fareBus ? this.fareBus.flat : 0), fareKm0B: fpB.km0, fareStepB: fpB.step, fareIncB: fpB.inc, fareCapB: fpB.cap, fareTabB: Model.fareTab(this.fareBus || CFG.bus.fareDefault, this.year, prm.vot),
-      bgShare: bg ? bg.share : 0, bgSpeed: bg ? bg.speed : 1, bgWait: bg ? bg.wait : 0, bgFare: bg ? bg.fare : 0, roadKeep: bg ? bg.keep : 0,
-      acc: acc, accOk: !!accOk, choices: choices, skimStore: store, gtS: store ? store.gt : null, tmS: store ? store.tm : null, kmS: store ? store.km : null, trS: store ? store.tr : null, brS: store ? store.br : null, DS: store ? store.D : null,
-      perMin: IND.perMin, capSh: IND.cap.sh, capLz: IND.cap.lz,
-      habit: this.habit && this.habit.length === Z ? this.habit : null, habAsc: CFG.habit ? CFG.habit.asc : 0, habLite: CFG.habit ? CFG.habit.carLite : 0,
+      bgShare: bg ? bg.share * (1 - (net && CM.Takeover ? CM.Takeover.bgCut(net.C.net, this.year) : 0)) : 0, bgSpeed: bg ? bg.speed : 1, bgWait: bg ? bg.wait : 0, bgFare: bg ? bg.fare : 0, roadKeep: bg ? bg.keep : 0, bgRoad: bg && bg.road != null ? bg.road : -1, bgSlow: bg ? bg.slow || 1 : 1,
+      acc: acc, accOk: !!accOk, choices: choices, skimStore: store, gtS: store ? store.gt : null, tmS: store ? store.tm : null, kmS: store ? store.km : null, trS: store ? store.tr : null, brS: store ? store.br : null, DS: store ? store.D : null,      perMin: IND.perMin, capSh: IND.cap.sh, capLz: IND.cap.lz,
+      habit: this.habit && this.habit.length === Z ? this.habit : null, habAsc: CFG.habit ? CFG.habit.asc : 0, habLite: CFG.habit ? CFG.habit.carLite : 0, hubAsc: CFG.choice.hubAsc || 0, hubFeed: CFG.choice.hubFeed || null,
+      hubEligible: Uint8Array.from(fn.list, f => f.T?.hub && !f.ext?.gate),
       carDem: carDem, hasCar: hasCar, S: S, pT: pT, pM: pM, zTrips: P.zTrips, zMetro: P.zMetro, zAccess: P.zAccess, zCW: P.zCW, zCT: P.zCT, zJ: this.zJobs, blocks: blocks, desTot: P.desTot, desMetro: P.desMetro,
-      zDest: P.zDest, zDestM: P.zDestM, fIn: P.fIn, fInM: P.fInM, fOut: P.fOut, fOutM: P.fOutM, fP: P.fP, fPM: P.fPM };
+      zDest: P.zDest, zDestM: P.zDestM, fIn: P.fIn, fInM: P.fInM, fOut: P.fOut, fOutM: P.fOutM, fP: P.fP, fPM: P.fPM,
+      bgNB: bgn ? bgn.NB : 0, bgG: bgn ? bgn.G : null, bgA: bgn ? bgn.A : null, bgF: bgn ? bgn.F : null, bgKM: bgn ? bgn.KM : null, bgZs: bgn ? bgn.zs : null, bgZg: bgn ? bgn.zg : null, bgZt: bgn ? bgn.zt : null, bgMax: bgn ? bgn.max : 0,
+      zBgR: bgn ? P.zBgR : null, zBgF: bgn ? P.zBgF : null, bgDS: bgn ? P.bgDS : null, bgS: bgn ? bgS : null };
     let odDone = false;
     if (!this.syncSolve && OdPool.ready()) {
       const self = this, isPred = !!opts.pred || buf === this.predBuf, ep = isPred ? this.predEpoch : this.epoch;
@@ -1890,6 +2076,7 @@
     if (!odDone) for (let i = 0; i < Z; i++) { odOrigin(K, i); if ((i & 7) === 7) yield; }
     st.trips = S[0]; st.metro = S[1]; st.car = S[2]; st.timeSum = S[3]; st.carTime = S[4]; st.metroTime = S[5]; st.fare = S[6]; st.metroPkm = S[7]; st.carPkm = S[8]; st.vkt = S[9];
     st.commTrips = S[10]; st.commTime = S[11]; st.ind = S[12]; st.indM = S[13];
+    if (bgn) { st.bg = bgS[0]; st.bgFerry = bgS[1]; st.bgPkm = bgS[2]; }
     for (let k = 0; k < NPK; k++) { st[TKEY[k]] = pT[k]; st[MKEY[k]] = pM[k]; }
     // ---- 地铁客流加载与自动运营 ----
     if (hasMetro) {
@@ -1922,7 +2109,7 @@
           for (let b = 0; b < k; b++) {
             const s0 = Math.floor(N * b / k), s1 = Math.floor(N * (b + 1) / k); if (s1 <= s0) continue;
             out.load.fill(0); out.stIn.fill(0); out.stOut.fill(0);
-            metroLoadBlock(N, nn, net.eFrom, store.D, 0, store.pred, store.order, store.nOrd, 0, s0, s1, out);
+            metroLoadBlock(N, nn, net.eFrom, net.exits, store.D, 0, store.pred, store.order, store.nOrd, 0, s0, s1, out);
             for (let e = 0; e < nE; e++) load[e] += out.load[e];
             for (let q = 0; q < N; q++) { stIn[q] += out.stIn[q]; stOut[q] += out.stOut[q]; }
             yield;
@@ -1965,12 +2152,13 @@
       // 列车不够时低运力运行（满载、拥挤与候车随之增加）。环线两个方向分别计算。没有车队计划的（开始界面背景等）照旧自动配车
       const plan = this.fleetOf(net);
       if (!P.freqDir || P.freqDir.length !== 2 * net.R) { P.freqDir = new Float32Array(2 * net.R); P.needDir = new Float32Array(2 * net.R); for (let r = 0; r < net.R; r++) P.freqDir[2 * r] = P.freqDir[2 * r + 1] = P.needDir[2 * r] = P.needDir[2 * r + 1] = P.freq[r]; }
+      const shareNeed = net.sharedSec ? this.shareSections(net, P, plan, p) : null;   // 共用区间：合计客流按运力分摊，所需频率按合计断面（小交路补足中段）
       for (let r = 0; r < net.R; r++) {
         const rt = net.C.routes[r], re = net.rideEdge[r], fp = plan && plan[r], cap = fp ? fp.cap : rt.cap, floor = Model.serviceFloor(rt, p), nd = rt.loop ? 2 : 1;
         for (let d = 0; d < nd; d++) {
           let mx = 0;
           for (let q = 0; q < re.length; q++) if ((nd === 1 || (q & 1) === d) && P.load[re[q]] > mx) mx = P.load[re[q]];
-          const need = U.clamp(Math.max(mx / (cap * mc.targetLF), floor), 1, mc.fMax), k = 2 * r + d;
+          const need = shareNeed && shareNeed[r] != null ? U.clamp(Math.max(shareNeed[r], floor), 1, mc.fMax) : U.clamp(Math.max(mx / (cap * mc.targetLF), floor), 1, mc.fMax), k = 2 * r + d;
           P.needDir[k] = need;
           let f = P.freqDir[k] * 0.55 + need * 0.45;
           if (fp) { const per = 3600 / Math.max(60, rt.cycleSec); f = fp.manual ? Math.min(mc.fMax, Math.min(fp.manual[d][p], fp.avail[d]) * per) : Math.min(f, mc.fMax, fp.avail[d] * per); }
@@ -2114,13 +2302,14 @@
   // start(job, buf) 返回该任务的生成器，onDone(job, 返回值) 在任务完成时调用（按完成顺序）。所有任务都在等工作线程时让出 WAIT
   Model.prototype.pipeline = function* (jobs, start, onDone, pred) {
     if(!jobs.length)return;
-    if (pred) this._predAt = performance.now(); else this._liveAt = performance.now();
     const width = this.syncSolve || !CarPool.ready() ? 1 : Math.min(PIPE_W, jobs.length);
     const bufs = pred ? (this.predBufs || (this.predBufs = [this.predBuf])) : (this.pipeBufs || (this.pipeBufs = [this.liveBuf]));
+    const mark = pred ? '_predAt' : '_liveAt';
     const act = [], free = [];
     for (let s = width - 1; s >= 0; s--) free.push(s);
     let next = 0;
     for (;;) {
+      this[mark] = performance.now();
       while (act.length < width && next < jobs.length) {
         const slot = free.pop(), buf = bufs[slot] || (bufs[slot] = {});
         act.push({ job: jobs[next], slot: slot, gen: start(jobs[next], buf) });
@@ -2338,6 +2527,7 @@
       this.dailyStale = false;
     }
     this.facDaily = { wd: this.attractDaily(this.ctxs.wd.per), we: this.attractDaily(this.ctxs.we.per) };
+    this.bgDaily = CM.BgNet && CM.BgNet.lines() ? CM.BgNet.daily(this) : null;   // 背景交通线路的日客流（v2.9）
     // 小区可达性（用于城市发展）：工作日早高峰
     const za = this.ctxs.wd.per[0].zAccess;
     let mx = 0; for (let z = 0; z < this.Z; z++) if (za[z] > mx) mx = za[z];

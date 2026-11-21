@@ -86,7 +86,7 @@
     this.ground = new Map(); this.iso = new Map(); this.cachePx = 0;
     this.overview = null; this.overviewStale = true; this.overviewAt = 0;
     this.frame = 0; this.time = 0;
-    this.layer = 'none'; this.layerOpt = { shareDt: 'wd', cong: 'now', flow: 'all', station: 'all', stView: 'flow', stDt: 'avg', cover: 'time', facP: 'all', facDt: 'wd', gapDt: 'wd', devK: 'pop', devB: 'era' };
+    this.layer = 'none'; this.layerOpt = { shareDt: 'wd', cong: 'now', flow: 'all', station: 'all', stView: 'flow', stDt: 'avg', cover: 'time', facP: 'all', facDt: 'wd', gapDt: 'wd', devK: 'pop', devB: 'era', bgK: 'rail', bgDt: 'avg' };
     this.heat = null; this.heatKey = '';
     this.bFade = 0; this.roadVer = -1;
     this.labelsOn = true;
@@ -109,7 +109,6 @@
   // ---------------- 地面块后台线程（v2.6 性能，见 tile-worker.js） ----------------
   // 地面块与总览图在独立线程绘制，主线程只贴图。线程按城市版本同步数据（只在真正要画新块时才同步，跳月期间没有开销）；
   // 线程不可用或出错时退回主线程的分帧绘制（groundChunkGen），画面结果相同
-  const GEO_FILES = { gz: 1, hz: 1, hk: 1, tk: 1, tp: 1, pa: 1, wh: 1, sh: 1, bj: 1, ld: 1, sz: 1 };
   function TilePool(R) { this.R = R; this.list = null; this.off = false; this.pending = new Map(); this.ep = 0; this.sent = {}; this.geo = null; this.ovBusy = false; this.ovAt = -1e9; }
   TilePool.prototype.ready = function () {
     if (this.off) return false;
@@ -121,8 +120,10 @@
     this.stop();
     try {
       const cores = navigator.hardwareConcurrency || 2, n = (navigator.deviceMemory <= 4 || matchMedia('(pointer:coarse)').matches) ? 1 : cores >= 8 ? 2 : 1, id = CM.mapId, mp = CM.curMap ? CM.curMap() : null;
-      const data = { landmarks: D.landmarks, runways: D.runways, airport: D.airport, reclaim: (D.reclaim || []).map(function (r) { return { id: r.id, year: r.year, name: r.name }; }), hsrYear: D.hsrYear };
-      const msg = { type: 'map', data: data, cfg: { W: CFG.W, H: CFG.H, START: CFG.START }, region: mp ? mp.region : null, geoId: id, geoFile: GEO_FILES[id] ? 'geo_' + id + '.js' : null, geo: GEO_FILES[id] ? null : CM.GEO };
+      const data = { landmarks: D.landmarks, runways: D.runways, airport: D.airport, reclaim: (D.reclaim || []).map(function (r) { return { id: r.id, year: r.year, name: r.name }; }), hsrYear: D.hsrYear, railYears: D.railYears, walls: D.walls };
+      const regionalRailYears = D.railByRegion ? CM.Geo.rail.map(function (r) { return r.year || 0; }) : null;
+      const geoFile = id === 'gz' ? 'geo_gz.js' : mp && mp.geo.file ? CM.geoAssetPath(mp.geo).split('/').pop() : null;
+      const msg = { type: 'map', regionalRailYears: regionalRailYears, data: data, cfg: { W: CFG.W, H: CFG.H, START: CFG.START }, region: mp ? mp.region : null, geoId: id, geoFile: geoFile, geo: geoFile ? null : CM.GEO };
       this.list = [];
       for (let i = 0; i < n; i++) {
         const w = new Worker('js/tile-worker.js'), slot = { w: w, n: 0 };
@@ -158,21 +159,25 @@
     if (s.roads !== c.roadGroups) {
       // 线程已解码同一份地理数据：道路只发序号与分组（复制全部折线要几百毫秒），新开局第一帧不再卡一下
       const byP = new Map(); CM.Geo.roads.forEach(function (rd, i) { byP.set(rd.p, i); });
-      const nG = c.roadGroups.length, nW = c.roadWays.length, cls = new Uint8Array(nG), flags = new Uint8Array(nG), wayRoad = new Int32Array(nW), wayGroup = new Int32Array(nW), extra = [];
-      for (let i = 0; i < nG; i++) { cls[i] = c.roadGroups[i].cls; flags[i] = c.roadGroups[i].flags; }
+      const nG = c.roadGroups.length, nW = c.roadWays.length, cls = new Uint8Array(nG), flags = new Uint8Array(nG), synthetic = new Uint8Array(nG), wayRoad = new Int32Array(nW), wayGroup = new Int32Array(nW), extra = [];
+      for (let i = 0; i < nG; i++) { cls[i] = c.roadGroups[i].cls; flags[i] = c.roadGroups[i].flags; synthetic[i] = !!c.roadGroups[i].sim; }
       for (let i = 0; i < nW; i++) { const w = c.roadWays[i], k = byP.get(w.p); wayGroup[i] = w.g; if (k !== undefined) wayRoad[i] = k; else { wayRoad[i] = -1 - extra.length; extra.push(w.p); } }
-      msg.roads = { cls: cls, flags: flags, wayRoad: wayRoad, wayGroup: wayGroup, extra: extra };
+      msg.roads = { cls: cls, flags: flags, synthetic: synthetic, wayRoad: wayRoad, wayGroup: wayGroup, extra: extra };
       s.roads = c.roadGroups; any = true;
     }
     if (s.geoVer !== c.geoVer || s.terrainVer !== c.terrainVer) {
       msg.terrain = { wmask: c.wmask, bmask: c.bmask, landFrac: c.landFrac, wood: c.wood, terrainVer: c.terrainVer, terrainYear: c.terrainYear, reclaim: c.reclaimWater ? c.reclaimWater() : [] };
+      if (s.terrainVer !== c.terrainVer) {
+        msg.terrain.wsdf = c.wsdf;
+        msg.terrain.roadReclaimMask = coastalReclaimMask(c);
+      }
       s.geoVer = c.geoVer; s.terrainVer = c.terrainVer; any = true;
     }
     if (s.version !== c.version) {
       msg.cells = { version: c.version, lu: c.lu, street: c.street, taken: c.taken, bh: c.bh, pop: c.pop, jobs: c.jobs, urbanYear: c.urbanYear, protectedId: c.protectedId, landmarkOn: c.landmarkOn };
       s.version = c.version; any = true;
     }
-    if (s.roadVersion !== c.roadVersion) { msg.built = c.roadsBuilt; s.roadVersion = c.roadVersion; any = true; }
+    if (s.roadVersion !== c.roadVersion) { msg.built = c.roadsBuilt; msg.roadVersion = c.roadVersion; s.roadVersion = c.roadVersion; any = true; }
     const LK = c.lockState();
     if (s.lk !== LK) { msg.lock = { mask: LK.mask, info: LK.info.map(function (f) { return { n: f.n, b: f.b }; }) }; s.lk = LK; any = true; }
     const fm = R._facm && R._facm.city === c ? R._facm : null;
@@ -605,6 +610,7 @@
     this._lmc = null; this._lmcCity = null;
     this.lastFrameMs = null; this.detail = { tier: 0, ema: 8, busy: 0, calm: 0 };
     this.roadVer = g ? g.city.roadVersion : -1;
+    this._roadParts = null; this._roadGaps = null;
     // 换城市（含换地图）时清掉按城市版本号缓存的数据，避免不同城市的版本号恰好相同
     this.linkGrid = null; this.linkGridVer = -1; this._cgIdx = null; this._cgRuns = null; this._fa = null; this._fl = null; this._flKey = null;
     this._todL = null; this._rev = null; this._smC = null;
@@ -744,16 +750,18 @@
     const city = this.game.city;
     // 城市风貌按 5 年一档：跨档时把地面与建筑分块标为过期（旧图块继续显示，后台逐块重绘，不出现空白）
     const ep = Math.floor(this.game.clock.y / 5);
-    const pend = this.tiles ? this.tiles.pending : null;
+    const pend = this.tiles ? this.tiles.pending : null, saved = this.themeStash && this.themeStash.ground;
     if (this.styleEpoch !== ep) {
       this.styleEpoch = ep; this.styleYear = ep * 5;
       this.ground.forEach(function (e) { e.stale = true; });
+      if (saved) saved.forEach(function (e) { e.stale = true; });
       this.iso.forEach(function (e, k) { if (k.charAt(0) !== 'L') e.stale = true; });
       if (pend) pend.forEach(function (p) { p.stale = true; });
     }
     if (city.roadVersion !== this.roadVer) {
       this.roadVer = city.roadVersion;
       this.ground.forEach(function (e) { e.stale = true; });
+      if (saved) saved.forEach(function (e) { e.stale = true; });
       if (pend) pend.forEach(function (p) { p.stale = true; });
       this.overviewStale = true;
     }
@@ -773,7 +781,12 @@
     });
     city.dirty.clear();
     const g = this.ground, iso = this.iso;
-    keys.forEach(function (k) { const a = g.get(k); if (a) a.stale = true; });
+    keys.forEach(function (k) {
+      const current = g.get(k), other = saved && saved.get(k), pending = pend && pend.get(k);
+      if (current) current.stale = true;
+      if (other) other.stale = true;
+      if (pending) pending.stale = true;
+    });
     ikeys.forEach(function (k) { const b = iso.get(k); if (b) b.stale = true; });
     this.overviewStale = true;
     this.heatKey = '';
@@ -1009,6 +1022,106 @@
     this._waterC = { city: city, ver: city.roadVersion, map: map };
     return map;
   };
+  // 海边道路按地形裁剪。只用于显示，原始道路几何与通车状态继续供模拟使用。
+  function coastalReclaimMask(city) {
+    if (city.roadReclaimMask !== undefined) return city.roadReclaimMask;
+    return D.reclaim?.length ? city.reclaimGeom().mask : null;
+  }
+  Renderer.prototype.roadParts = function (city, way) {
+    let cache = this._roadParts;
+    if (!cache || cache.city !== city || cache.version !== city.terrainVer) {
+      this._roadParts = cache = { city, version: city.terrainVer, ways: new WeakMap(), reclaim: coastalReclaimMask(city) };
+    }
+    if (cache.ways.has(way)) return cache.ways.get(way);
+    const p = way.p, spans = [], mask = cache.reclaim;
+    const waterKind = function (x, y) {
+      const depth = city.waterDistAt(x, y);
+      if (depth >= -0.06) return 0;
+      if (mask) {
+        const i = Math.floor(x * city.FS), j = Math.floor(y * city.FS);
+        if (i >= 0 && i < city.FW && j >= 0 && j < city.FH) {
+          const reclaimed = mask[j * city.FW + i] - 60001;
+          if (reclaimed >= 0 && D.reclaim[reclaimed]?.year > city.terrainYear) return 2;
+        }
+      }
+      return depth < -0.12 ? 1 : 0;
+    };
+    // 匝道按地面规则处理，已通车的桥梁和隧道直接保留原线形。
+    if (!(city.roadGroups[way.g].flags & 3) && city.wsdf) {
+      let span = null;
+      for (let k = 0; k + 3 < p.length; k += 2) {
+        const x = p[k], y = p[k + 1], dx = p[k + 2] - x, dy = p[k + 3] - y;
+        const len = Math.hypot(dx, dy);
+        if (!len) continue;
+        const n = Math.ceil(len / 0.05);
+        for (let i = 0; i < n; i++) {
+          const mid = (i + 0.5) / n, kind = waterKind(x + dx * mid, y + dy * mid);
+          if (!span || kind !== span.kind) {
+            const t = i / n, a = x + dx * t, b = y + dy * t;
+            if (span && i) span.pts.push(a, b);
+            span = { kind, pts: [a, b], length: 0 }; spans.push(span);
+          }
+          span.length += len / n;
+        }
+        span.pts.push(p[k + 2], p[k + 3]);
+      }
+    }
+    const hide = part => part.kind === 2 || (part.kind === 1 && part.length >= 0.15);
+    let result = [way];
+    if (spans.some(hide)) {
+      result = [];
+      let points = null;
+      for (const part of spans) {
+        if (hide(part)) { points = null; continue; }
+        if (points) for (let i = 2; i < part.pts.length; i++) points.push(part.pts[i]);
+        else { points = part.pts; result.push({ g: way.g, p: points }); }
+      }
+      for (const part of result) part.bbox = CM.Geo.bbox(part.p);
+    }
+    cache.ways.set(way, result);
+    return result;
+  };
+
+  // 两端都接上已通车道路、总长不足 150 m 的断口可先铺在底图上。
+  Renderer.prototype.roadGaps = function (city) {
+    const previous = this._roadGaps;
+    if (previous && previous.city === city && previous.road === city.roadVersion && previous.terrain === city.terrainVer) return previous.groups;
+    const groups = new Set(), endpoints = new Map(), pending = new Map();
+    const key = (x, y) => Math.floor(x / 0.08) + ',' + Math.floor(y / 0.08);
+    const put = function (x, y) {
+      const k = key(x, y);
+      if (!endpoints.has(k)) endpoints.set(k, []);
+      endpoints.get(k).push([x, y]);
+    };
+    for (const way of city.roadWays) {
+      const p = way.p, group = city.roadGroups[way.g];
+      if (p.length < 4) continue;
+      if (city.roadsBuilt[way.g]) {
+        put(p[0], p[1]); put(p[p.length - 2], p[p.length - 1]);
+      } else if (!(group.flags & 3) && !group.sim) {
+        const entry = pending.get(way.g);
+        if (entry) entry.push(way); else pending.set(way.g, [way]);
+      }
+    }
+    const near = function (x, y) {
+      const cx = Math.floor(x / 0.08), cy = Math.floor(y / 0.08);
+      for (let j = cy - 1; j <= cy + 1; j++) for (let i = cx - 1; i <= cx + 1; i++) {
+        for (const p of endpoints.get(i + ',' + j) || []) if (Math.hypot(p[0] - x, p[1] - y) < 0.08) return true;
+      }
+      return false;
+    };
+    for (const [id, ways] of pending) {
+      let len = 0;
+      const joined = ways.every(way => {
+        const p = way.p;
+        if (!near(p[0], p[1]) || !near(p[p.length - 2], p[p.length - 1])) return false;
+        for (let k = 2; k < p.length; k += 2) len += Math.hypot(p[k] - p[k - 2], p[k + 1] - p[k - 1]);
+        return len < 0.6 && this.roadParts(city, way)[0] === way;
+      });
+      if (joined) groups.add(id);
+    }
+    this._roadGaps = { city, road: city.roadVersion, terrain: city.terrainVer, groups };
+    return groups;  };
 
   Renderer.prototype.drawGround = function (ctx, X0, Y0, X1, Y1, lvl) {
     const g = this.game, city = g.city, W = city.W, H = city.H, Geo = CM.Geo;
@@ -1198,6 +1311,7 @@
       if (!inBox(r.bbox, 0.5)) continue;
       if ((r.flags & 16) && g.clock.y < (D.hsrYear || 2009)) continue;   // 高速铁路按本地图的开通年份出现
       if (r.year && g.clock.y < r.year) continue;
+      if (!Geo.railShown(r) || !CM.City.railActiveAt(r, g.clock.y)) continue;
       // 隧道段（flags & 2）原先整段跳过，于是太湖山隧道两侧的商合杭高铁在图上直接断成两截
       // （铜闸以西、吴山一带各一处断口，玩家会以为线没画完）。现在改画成虚线：线是连着的，
       // 虚线本身就表达「这一段在山体里」。线宽比地面段细一档，颜色取铁路描边色。
@@ -1208,8 +1322,7 @@
         ctx.setLineDash([0.3, 0.22]);
         ctx.stroke(tunPath); ctx.setLineDash([]);
         continue;
-      }
-      const railPath = this.featurePath(r, false);
+      }      const railPath = this.featurePath(r, false);
       // 高速铁路（flags & 16）比普速画得重一档：底图的铁路是「白芯 + 浅灰边」，在浅色地面上
       // 远看几乎是隐形的——商合杭高铁在本图只是过境线、没有运营权的彩色覆盖，所以玩家会觉得「图里没有这条线」。
       const hsr = !!(r.flags & 16);
@@ -1220,6 +1333,32 @@
       if (lvl >= 32) ctx.setLineDash([0.06, 0.06]);
       ctx.stroke(railPath); ctx.setLineDash([]);
     }
+    // 隧道、有盖路段和很短的数据缺口处的连接段：线路不断开，长隧道画虚线（v2.9）
+    for (const r of Geo.railJoins()) {
+      if (!inBox(r.bbox, 0.5) || !CM.City.railActiveAt(r, g.clock.y)) continue;
+      const railPath = this.featurePath(r, false);
+      if (r.dash) {   // 长隧道：淡色虚线，只示意线路在地下继续
+        ctx.globalAlpha = 0.55; ctx.setLineDash([0.16, 0.12]);
+        ctx.strokeStyle = RD.railCase; ctx.lineWidth = Math.max(0.04, px * 2); ctx.stroke(railPath);
+        ctx.globalAlpha = 1; ctx.setLineDash([]);
+        continue;
+      }
+      ctx.strokeStyle = RD.railCase; ctx.lineWidth = Math.max(0.05, px * 2.6); ctx.stroke(railPath);
+      if (lvl >= 32) ctx.setLineDash([0.06, 0.06]);
+      ctx.strokeStyle = RD.rail; ctx.lineWidth = Math.max(0.025, px * 1.2); ctx.stroke(railPath);
+      ctx.setLineDash([]);
+    }
+    // 城墙（v3.1，D.walls）：砖石色的粗线，外侧一圈深色描边
+    for (const w of D.walls || []) {
+      if (w.year && g.clock.y < w.year) continue;
+      const wp = this._wallPath || (this._wallPath = new WeakMap()); let path = wp.get(w);
+      if (!path) { path = new Path2D(); for (const L of w.lines) { path.moveTo(L[0][0], L[0][1]); for (let k = 1; k < L.length; k++) path.lineTo(L[k][0], L[k][1]); } wp.set(w, path); }
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      ctx.strokeStyle = TH.night ? '#3f3a33' : '#8f8573'; ctx.lineWidth = Math.max(0.09, px * 4.2); ctx.stroke(path);
+      ctx.strokeStyle = TH.night ? '#6a6252' : '#cfc4ad'; ctx.lineWidth = Math.max(0.055, px * 2.6); ctx.stroke(path);
+    }
+    // 填海前先盖回水面，再绘制已经通车的桥梁、隧道与可见的普通道路。
+    if (anyRc) { ctx.fillStyle = GROUND.water; ctx.fill(rpth, 'nonzero'); }
     // 支路：只在已开发的街区显示
     const streets = Geo.streetBk && lvl >= 16 ? Geo.query(Geo.streetBk, X0 - 0.5, Y0 - 0.5, X1 + 0.5, Y1 + 0.5) : [];
     // 支路：只在已开发的街区显示（v3.46 改成「整条判定」）。
@@ -1233,19 +1372,23 @@
       let any = false;
       for (let q = 0; q + 3 < p.length; q += 2) {
         const c = city.cellAt((p[q] + p[q + 2]) / 2, (p[q + 1] + p[q + 3]) / 2);
-        if (c >= 0 && city.street[c] && city.lu[c] !== LU.PARK) { any = true; break; }
-      }
+        if (c >= 0 && city.street[c] && city.lu[c] !== LU.PARK) { any = true; break; }      }
       if (!any) continue;
-      for (let q = 0; q + 3 < p.length; q += 2) { st.moveTo(p[q], p[q + 1]); st.lineTo(p[q + 2], p[q + 3]); }
+      for (let q = 0; q + 3 < p.length; q += 2) {
+        // 支路同样按水面裁剪（v2.9 上游口径）：湖面、江面上不画细线，避免看起来像「水里有路」
+        if (city.wsdf && city.waterDistAt((p[q] + p[q + 2]) / 2, (p[q + 1] + p[q + 3]) / 2) < -0.12) continue;
+        st.moveTo(p[q], p[q + 1]); st.lineTo(p[q + 2], p[q + 3]);
+      }
     }
     // 主要道路（已通车）
     const ways = city.roadWayBk ? Geo.query(city.roadWayBk, X0 - 0.5, Y0 - 0.5, X1 + 0.5, Y1 + 0.5) : [];
     const lay = { 2: [], 3: [], 4: [] }, links = [], tunnels = [];
+    const gaps = ways.length ? this.roadGaps(city) : null;
     for (const k of ways) {
       const w = city.roadWays[k];
-      if (!city.roadsBuilt[w.g]) continue;
-      const gr = city.roadGroups[w.g];
-      if (gr.flags & 2) tunnels.push(w); else if (gr.flags & 4) links.push(w); else lay[gr.cls].push(w);
+      if (!city.roadsBuilt[w.g] && !gaps.has(w.g)) continue;
+      const gr = city.roadGroups[w.g], list = gr.flags & 2 ? tunnels : gr.flags & 4 ? links : lay[gr.cls];
+      for (const part of this.roadParts(city, w)) list.push(part);
     }
     // 水面上的路段（非桥梁）改用剔除后的直线段路径，其余仍走带弧线的 featurePath
     const wet = this._roadWater(city);
@@ -1279,8 +1422,7 @@
       if (rod.link) { ctx.strokeStyle = RD.exp; ctx.lineWidth = Math.max(0.04, px * 1.4); ctx.stroke(rod.link); }
     }
     // 尚未填海成陆的区域盖回水面：伸向新土地的道路、桥梁与铁路在成陆前不显示
-    if (anyRc) { ctx.fillStyle = GROUND.water; ctx.fill(rpth, 'nonzero'); }
-    // 地标占地（2D）
+    if (anyRc) { ctx.fillStyle = GROUND.water; ctx.fill(rpth, 'nonzero'); }    // 地标占地（2D）
     for (let k = 0; k < D.landmarks.length; k++) {
       if (!city.landmarkOn[k]) continue;
       const lm = D.landmarks[k], R = Math.max(lm.w, lm.d) / CFG.CELL_M;
@@ -1295,10 +1437,12 @@
     }
     // 未开放区域：底色与斜线先画在临时图层上，再用按格掩膜（3×3 平均后双线性放大）裁出范围，
     // 与山体、风景区相邻处是柔和的边缘，不再是一格一格的方块。水面格按所在区域计入（随后按真实岸线裁掉水面）
+    const state = city.lockState();
     const locked = function (i, j) {
-      const c = U.clamp(j, 0, H - 1) * W + U.clamp(i, 0, W - 1), k = city.region[c];
-      const state = city.lockState();
-      return city.landFrac[c] >= 0.5 ? state.mask[c] : (state.info[city.lockRegion(c)].b ? 0 : 1);
+      const c = U.clamp(j, 0, H - 1) * W + U.clamp(i, 0, W - 1);
+      if (city.landFrac[c] >= 0.5) return state.mask[c];
+      const region = state.info[city.lockRegion(c)];
+      return region.n && !region.b ? 1 : 0;
     };
     let anyLock = false;
     for (let j = j0; j < j1 && !anyLock; j++) for (let i = i0; i < i1; i++) if (locked(i, j) && city.lu[j * W + i] !== LU.WATER) { anyLock = true; break; }
@@ -1336,6 +1480,7 @@
   };
   // 地标占地（2D 平面）：真实场地范围 + 主体建筑轮廓
   Renderer.prototype.drawLandmark2D = function (ctx, lm, lvl) {
+    if (lm.bridge) return;   // 平面底图已按道路线位画桥面。
     if (CM.Sites.complex(lm)) return this.drawComplexSite(ctx, (x, y) => [x, y], lm, lvl, true);
     const F = TH.lm2d, N = TH.night, CMM = CFG.CELL_M;
     const ang = (lm.rot || 0) * Math.PI / 180, ca = Math.cos(ang), sa = Math.sin(ang);
@@ -1460,6 +1605,17 @@
         if (lm.style === 'zoo') for (const [a, b] of [[-0.55, -0.45], [-0.55, 0.35], [-0.05, -0.55]]) poly(ngon(hw * a, hd * b, hw * 0.2, 7, 0.3, hd * 0.2), N ? '#3c4a38' : '#dfe6c9');
         else poly(ngon(-hw * 0.35, -hd * 0.25, 12, 6), bld);
         break;
+      case 'terminal': {   // 真实航站楼平面（v3.1）：按 terminals.js 的构件画主楼、指廊、圆楼与弧形楼，登机廊桥与机位上的客机
+        const fillB = bld, tp = function (pts) { poly(pts.map(function (p) { return T(p[0], p[1]); }), fillB); };
+        for (const p of lm.parts || []) { const o = CM.TerminalOutline(p); if (o) tp(o); }
+        const pl = N ? '#9aa6b4' : '#ffffff';
+        ctx.save(); ctx.fillStyle = pl;
+        const plane = function (u, v, a, L) { const c = Math.cos(a), s = Math.sin(a), P = function (p, q) { return T(u + p * c - q * s, v + p * s + q * c); };
+          poly([P(L * 0.5, 0), P(L * 0.1, L * 0.05), P(-L * 0.18, L * 0.48), P(-L * 0.26, L * 0.48), P(-L * 0.12, L * 0.05), P(-L * 0.42, L * 0.05), P(-L * 0.5, L * 0.18), P(-L * 0.52, 0), P(-L * 0.5, -L * 0.18), P(-L * 0.42, -L * 0.05), P(-L * 0.12, -L * 0.05), P(-L * 0.26, -L * 0.48), P(-L * 0.18, -L * 0.48), P(L * 0.1, -L * 0.05)], pl, false); };
+        for (const s of CM.TerminalStands(lm.parts || [])) { const ex = s[0], ez = s[1], nx = s[2], nz = s[3]; if (s[5]) poly([T(ex - nz * 1.8, ez + nx * 1.8), T(ex - nz * 1.8 + nx * 26, ez + nx * 1.8 + nz * 26), T(ex + nz * 1.8 + nx * 26, ez - nx * 1.8 + nz * 26), T(ex + nz * 1.8, ez - nx * 1.8)], N ? '#55606e' : '#c4cad2', false); const off = s[5] ? s[4] / 2 + 30 : s[4] / 2 + 14; plane(ex + nx * off, ez + nz * off, Math.atan2(-nz, -nx), s[4]); }
+        ctx.restore();
+        break;
+      }
       case 'airport': {   // 机场平面（v2.2）：停机坪、航站楼、廊桥与停机位上的客机；+v 朝跑道
         const TT = (lm.T || 400) / 2, zf = -hd + 64, ap = N ? '#2c3540' : '#d9dfe5', pl = N ? '#9aa6b4' : '#ffffff';
         rect(-hw, -hd + 8, hw, hd, ap, false); rect(-hw * 1.05, hd, hw * 1.05, hd + 42, ap, false);
@@ -1656,7 +1812,7 @@
   const NEON_P = { eu: 0.25 };          // 出现招牌的商业楼比例（未列出的地区为 0.7）
   const ROOF_MAX = { eu: 30 };          // 坡屋顶 / 芒萨尔屋顶的最高楼高（米，未列出的地区为 20）
   const NEON_COL = ['#ff4fa3', '#36e0ff', '#ffd23f', '#7cff6b', '#ff6a3d', '#b98cff'];
-  const REGION_KEY = { '中国内地': 'cn', '中国香港': 'hk', '中国台湾': 'tw', '日本': 'jp', '法国': 'eu' };
+  const REGION_KEY = { '中国内地': 'cn', '中国香港': 'hk', '中国台湾': 'tw', '日本': 'jp', '法国': 'eu', '英国': 'eu', '新加坡': 'hk', '美国': 'eu', '澳大利亚': 'eu' };
   const roofFor = function (rk, st, mh) { return st === 'old' && mh <= (ROOF_MAX[rk] || 20) ? STYLE_PAL.roof[rk] : null; };
   function nightCol(c) { return [c[0] * 0.24 + 8, c[1] * 0.26 + 12, c[2] * 0.28 + 24]; }   // 与原夜景楼宇同一深度
   Renderer.prototype.regionKey = function () { const m = CM.curMap ? CM.curMap() : null; return (m && REGION_KEY[m.region]) || 'cn'; };
@@ -2383,6 +2539,16 @@
         ordered(parts);
         break;
       }
+      case 'terminal': {
+        for (const part of lm.parts || []) {
+          const shape = CM.TerminalOutline(part);
+          if (shape) fillPts(ctx, shape.map(function (p) {
+            const a = (lm.rot || 0) * Math.PI / 180, x = p[0] / CFG.CELL_M, y = p[1] / CFG.CELL_M;
+            return pj(lm.x + x * Math.cos(a) - y * Math.sin(a), lm.y + x * Math.sin(a) + y * Math.cos(a), 0);
+          }), this.themeName === 'dark' ? '#586574' : '#d6dee8');
+        }
+        break;
+      }
       case 'airport': { // 机场（附加模型）：放在地面图的停机坪上——与跑道平行的航站楼、登机廊桥与停机位上的客机、塔台；+v 一侧朝向跑道
         const body = N ? [96, 104, 118] : [236, 238, 242], roof = N ? [120, 134, 156] : [206, 216, 228], td = 18;
         const plane = function (u, v, tail) {
@@ -2827,8 +2993,8 @@
   Renderer.prototype.buildHeat = function () {
     const g = this.game, city = g.city, model = g.model, W = city.W, H = city.H, LO = this.layerOpt, lay = this.layer;
     const access = lay === 'cover' || lay === 'gap' ? model.net : null;
-    const dyn = lay === 'fac' || lay === 'gap' || lay === 'flow' || lay === 'mshare';
-    const key = this.themeName + ':' + AX.flag() + ':' + lay + ':' + city.version + ':' + g.clock.y + ':' + g.clock.m + ':' + (lay === 'cover' ? g.netVersion + ':' + LO.cover : '') + (lay === 'fac' ? LO.facP + ':' + LO.facDt : '') + (lay === 'gap' ? LO.gapDt + ':' + g.netVersion : '') + (lay === 'mshare' ? LO.shareDt : '') + (lay === 'dev' ? LO.devK + ':' + LO.devB + ':' + (g.eraBase ? g.eraBase.id : '') + (LO.devK === 'pull' ? ':' + g.netVersion + ':' + (model.dailyStale ? 0 : model.version) : '') : '') + (dyn ? ':' + model.cycles + ':' + (model.settled ? 's' : '') : '');
+    const dyn = lay === 'fac' || lay === 'gap' || lay === 'flow' || lay === 'mshare' || lay === 'bgt';
+    const key = this.themeName + ':' + AX.flag() + ':' + lay + ':' + city.version + ':' + g.clock.y + ':' + g.clock.m + ':' + (lay === 'cover' ? g.netVersion + ':' + LO.cover : '') + (lay === 'fac' ? LO.facP + ':' + LO.facDt : '') + (lay === 'gap' ? LO.gapDt + ':' + g.netVersion : '') + (lay === 'mshare' ? LO.shareDt : '') + (lay === 'dev' ? LO.devK + ':' + LO.devB + ':' + (g.eraBase ? g.eraBase.id : '') + (LO.devK === 'pull' ? ':' + g.netVersion + ':' + (model.dailyStale ? 0 : model.version) : '') : '') + (dyn ? ':' + model.cycles + ':' + (model.settled ? 's' : '') : '') + (lay === 'bgt' ? ':' + LO.bgK + ':' + LO.bgDt : '');
     const old = this.heatLayers.get(lay);
     if (old && old.key === key && old.access === access) { this.heat = old.cv; this.heatKey = key; return; }
     this.heatKey = key;
@@ -2867,12 +3033,15 @@
     }
     // 通勤时间、乘地铁比例：按片区算比率，再在片区中心之间双线性插值；出行很少的片区不参与（比率没有意义）
     let rateAt = null, rateScale = null;
-    if (lay === 'flow' || lay === 'mshare') {
+    // 背景交通（v2.9）：各片区居民的出行里乘铁路（或渡轮）的比例，颜色越深，地铁在这里面对的竞争越强
+    const bgd = lay === 'bgt' && model.bgDaily ? model.bgDaily[LO.bgDt || 'avg'] : null;
+    if (lay === 'flow' || lay === 'mshare' || (bgd && bgd.ready)) {
       const Z = model.Z, ZS = CFG.ZONE, zw = W / ZS, zh = H / ZS, zv = new Float32Array(Z).fill(-1), P0 = model.resultsFor('wd').per[0];
       if (lay === 'flow') { if (P0.zCW) for (let z = 0; z < Z; z++) if (P0.zCW[z] > 5) zv[z] = P0.zCT[z] / P0.zCW[z]; }
+      else if (lay === 'bgt') { const zk = LO.bgK === 'ferry' ? bgd.zF : bgd.zR; for (let z = 0; z < Z; z++) if (bgd.trips[z] > 300) zv[z] = zk[z] / bgd.trips[z]; }
       else if (fd) for (let z = 0; z < Z; z++) if (fd.trips[z] > 300) zv[z] = fd.metro[z] / fd.trips[z];
       const vals = []; let wSum = 0;
-      for (let z = 0; z < Z; z++) if (zv[z] >= 0) { const w = lay === 'flow' ? P0.zCW[z] : fd.trips[z]; vals.push([zv[z], w]); wSum += w; }
+      for (let z = 0; z < Z; z++) if (zv[z] >= 0) { const w = lay === 'flow' ? P0.zCW[z] : lay === 'bgt' ? bgd.trips[z] : fd.trips[z]; vals.push([zv[z], w]); wSum += w; }
       vals.sort(function (a, b) { return a[0] - b[0]; });
       const at = function (q) { let c = 0; for (const e of vals) { c += e[1]; if (c >= wSum * q) return e[0]; } return vals.length ? vals[vals.length - 1][0] : 0; };
       if (lay === 'flow') { const lo = Math.floor(at(0.1)), hi = Math.max(lo + 8, Math.ceil(at(0.9))); rateScale = { lo: lo, hi: hi }; }
@@ -2938,6 +3107,7 @@
         if (p + jb > 300 && city.lu[c] !== CM.LU.WATER) {
           const x = c % W, v = rateAt(x, (c - x) / W);
           if (v >= 0 && lay === 'flow') { col = AX.ramp([[0, [64, 170, 120]], [0.5, [245, 200, 80]], [1, [205, 50, 50]]], U.clamp((v - rateScale.lo) / (rateScale.hi - rateScale.lo), 0, 1)); a = U.clamp(0.28 + Math.sqrt((p + jb) / 90000) * 0.3, 0, 0.55); }
+          else if (v > 0.003 && lay === 'bgt') { const t = U.clamp(v / rateScale.hi, 0, 1); col = LO.bgK === 'ferry' ? AX.ramp([[0, [208, 238, 236]], [0.5, [80, 182, 176]], [1, [16, 110, 120]]], t) : AX.ramp([[0, [236, 228, 210]], [0.5, [214, 150, 80]], [1, [150, 70, 30]]], t); a = 0.12 + 0.42 * t; }
           else if (v >= 0) { const t = U.clamp(v / rateScale.hi, 0, 1); col = AX.ramp([[0, [214, 232, 245]], [0.5, [90, 160, 220]], [1, [20, 70, 159]]], t); a = 0.16 + 0.42 * t; }
         }
       } else if (lay === 'pop') {
@@ -3042,8 +3212,10 @@
     const detailScale = z >= 28 ? 1 : (this.detail.tier === 2 ? 0.68 : this.detail.tier === 1 ? 0.85 : 1);
     const eff = z * Math.min(dpr, 1.5) * (1 - 0.28 * t) * detailScale;
     const queue = [];
+    if (this.layer !== 'none') this._lastLayer = this.layer;
+    const congestion = this._lastLayer === 'cong';
     const lvl = this.rasterLevel(eff, { x0: wx0, y0: wy0, x1: wx1, y1: wy1 }, queue,
-      t >= 0.999 && cam.view === 1 && under < 0.99 && (this.layerFade || 0) < 0.99);
+      t >= 0.999 && cam.view === 1 && under < 0.99 && (congestion || (this.layerFade || 0) < 0.99));
     setWorld();
     if (this.overviewJob) queue.push({ kind: 'o', d: 1 });
     if (this.overview) {
@@ -3086,7 +3258,7 @@
     ctx.globalAlpha = 1;
     // ---- 图层（地面） ----
     const layerOn = this.layer !== 'none';
-    if (layerOn && ['pop', 'jobs', 'cover', 'region', 'fac', 'gap', 'dev', 'flow', 'mshare'].indexOf(this.layer) >= 0) {
+    if (layerOn && ['pop', 'jobs', 'cover', 'region', 'fac', 'gap', 'dev', 'flow', 'mshare', 'bgt'].indexOf(this.layer) >= 0) {
       this.buildHeat();
       setWorld();
       ctx.imageSmoothingEnabled = true;
@@ -3097,15 +3269,15 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // 分析图层开启时：地面加一层浅色蒙版，隐藏建筑与车辆，让图层本身清楚可读（渐变过渡）
     this.layerFade = U.clamp((this.layerFade || 0) + (layerOn ? dt : -dt) / 0.25, 0, 1);
-    if (this.layerFade > 0.01 && (this.layer === 'cong' || this.layer === 'station' || this.layer === 'tod' || !layerOn)) {
-      ctx.fillStyle = U.rgb(TH.fog || TH.bg, 0.5 * this.layerFade); ctx.fillRect(0, 0, this.w, this.h);
+    if (this.layerFade > 0.01 && (congestion || this.layer === 'station' || this.layer === 'tod' || !layerOn)) {
+      ctx.fillStyle = U.rgb(TH.fog || TH.bg, (congestion ? 0.2 : 0.5) * this.layerFade); ctx.fillRect(0, 0, this.w, this.h);
     }
     // 经纬网格（视图工具）：画在地面上、建筑之下，保持低调
     if (CM.Grid) CM.Grid.draw(ctx, this);
     // ---- 建筑与动态对象 ----
     const agents = this.agentsOn && this.layerFade < 0.5 ? CM.agents : null;
     if (t >= 0.999 && cam.view === 1) this.bFade = Math.min(1, this.bFade + dt / 0.3); else this.bFade = Math.max(0, this.bFade - dt / 0.15);
-    const bAlpha = this.bFade * (1 - under) * (1 - this.layerFade);
+    const bAlpha = this.bFade * (1 - under) * (1 - (congestion ? 0.7 : 1) * this.layerFade);
     const agentAlpha = (1 - under) * (1 - this.layerFade);
     if (bAlpha > 0.01 && lvl) {
       const ilvl = lvl;
@@ -3121,7 +3293,9 @@
       const city = this.game.city, lmBy = new Map();
       for (let k = 0; k < D.landmarks.length; k++) {
         if (!city.landmarkOn[k]) continue;
-        const lm = D.landmarks[k], kk = Math.floor(lm.x / C) + ':' + Math.floor(lm.y / C);
+        const lm = D.landmarks[k];
+        if (lm.bridge) continue;
+        const kk = Math.floor(lm.x / C) + ':' + Math.floor(lm.y / C);
         let l = lmBy.get(kk); if (!l) { l = []; lmBy.set(kk, l); } l.push(k);
       }
       const extraBy = new Map();
@@ -3164,6 +3338,7 @@
     // ---- 图层（线状） ----
     if (this.layer === 'cong') this.drawCongestion(ctx);
     if (this.layer === 'flow') this.drawDesire(ctx);
+    if (this.layer === 'bgt' && CM.BgNet) CM.BgNet.draw(ctx, this, this.layerOpt.bgK);
     if (this.layer === 'cover') this.drawCoverExtras(ctx, ui);
     // ---- 地铁 ----
     this.drawDemolitions(ctx, under);
@@ -3171,6 +3346,7 @@
     this.drawHeritage(ctx, under);
     this.drawMetro(ctx, ui);
     if (t > 0.05 && this.layer === "none") this.drawStationModels(ctx, g.draft && g.draft.compiled || g.compiled, under);
+    this.drawVirtualNodes(ctx, g.draft && g.draft.compiled || g.compiled, ui, under);
     CM.CityLink.draw(this, ctx, (1 - under) * (1 - this.layerFade));
     this.drawPortals(ctx, (1 - under) * (1 - this.layerFade));
     if (CM.BgTransit && this.game === CM.game) CM.BgTransit.draw2D(ctx, this, agentAlpha);
@@ -3200,7 +3376,7 @@
     else if (pending) budget = Math.max(2, Math.min(g.preview ? 4 : CFG.perf.sharpBudgetMs, 16 - (performance.now() - tStart)));
     else {
       budget = this.detail.ema < 14 && !(this.cam.fly) ? Math.min(CFG.perf.prefetchMs, Math.max(0, 14 - (performance.now() - tStart))) : 0;
-      if (budget > 0.5) this.prefetch(queue, lvl, { x0: wx0, y0: wy0, x1: wx1, y1: wy1 }, t >= 0.999 && cam.view === 1 && under < 0.99 && this.layerFade < 0.99);
+      if (budget > 0.5) this.prefetch(queue, lvl, { x0: wx0, y0: wy0, x1: wx1, y1: wy1 }, t >= 0.999 && cam.view === 1 && under < 0.99 && (congestion || this.layerFade < 0.99));
       else budget = 0;
     }
     // 镜头移动中（拖动、滚轮缩放、键盘平移）：每帧补块的预算收紧，保证移动流畅；停下后再用完整预算补齐
@@ -3571,6 +3747,27 @@
     ctx.globalAlpha = 1;
   };
   // 平面视图的线网缓存图：比屏幕大一圈。平移在边距内直接贴图（对齐到物理像素），缩放时先缩放旧图，停下或约 120 ms 后重画
+  Renderer.prototype.drawVirtualNodes = function (ctx, C, ui, under) {
+    this._vnPx = null;
+    if (!C) return;
+    const net = C.net, tool = ui && ui.tools ? ui.tools.tool : null, sel = ui ? ui.selection : null, v = this.view;
+    const show = tool === 'line' || tool === 'edit' || tool === 'select' || tool === 'demolish';
+    if (!net || (!show && !(sel && sel.kind === 'station' && net.stations[sel.id] && net.stations[sel.id].v))) return;
+    const px = this._vnPx = [];   // 本帧虚拟节点的屏幕位置（拾取用，见 pickStation）
+    const r = U.clamp(this.z * 0.07, 2.6, 6), tmp = this._vnTmp || (this._vnTmp = { x: 0, y: 0 }), M = CM.Metro;
+    for (const id in net.stations) {
+      const s = net.stations[id]; if (!s.v) continue;
+      if (s.x < v.x0 - 1 || s.x > v.x1 + 1 || s.y < v.y0 - 1 || s.y > v.y1 + 1) continue;
+      if (!show && sel.id !== id) continue;
+      const lid = M.stationLines(net, id)[0], L = lid ? net.lines[lid] : null;
+      let hh = CFG.metro.height[s.type]; if (hh < 0) hh = hh * under * UNDER_DEPTH;
+      const p = this.P(s.x, s.y, hh, tmp), on = sel && sel.kind === 'station' && sel.id === id;
+      px.push({ id: id, x: p.x, y: p.y });
+      ctx.globalAlpha = 1; ctx.fillStyle = TH.stFill || '#fff'; ctx.strokeStyle = L ? AX.line(L) : '#607080'; ctx.lineWidth = on ? 2.4 : 1.6;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - r); ctx.lineTo(p.x + r, p.y); ctx.lineTo(p.x, p.y + r); ctx.lineTo(p.x - r, p.y); ctx.closePath(); ctx.fill(); ctx.stroke();
+      if (on) { ctx.strokeStyle = 'rgba(30,136,229,0.8)'; ctx.lineWidth = 2; ctx.beginPath(); ctx.arc(p.x, p.y, r + 5, 0, Math.PI * 2); ctx.stroke(); }
+    }
+  };
   Renderer.prototype.blitMetroLayer = function (ctx, C, ix, rs, lw, LS, hlLine, lyrDim) {
     const w = this.w, h = this.h, dpr = this.dpr, mx = Math.round(w * 0.18), my = Math.round(h * 0.18), z = this.z, ox = this.ox, oy = this.oy, cam = this.cam, now = performance.now();
     const key = ix.seq + '|' + rs.sig + '|' + (hlLine || '') + '|' + Math.round(lyrDim * 40) + '|' + this.detail.tier + '|' + this.game.netVersion + '|' + (this.game.city.terrainVer || 0) + '|' + w + '|' + h + '|' + (rs.mnet ? rs.xLinks.length : -1);
@@ -3926,31 +4123,33 @@
   Renderer.DIFF_COLS = function () { return AX.enabled() ? DIFF_COLS_AX : DIFF_COLS; };
   Renderer.prototype.congIndex = function () {
     const city = this.game.city, car = city.car;
-    if (this._cgIdx && this._cgIdx.city === city && this._cgIdx.ver === city.roadVersion) return this._cgIdx;
+    if (this._cgIdx && this._cgIdx.city === city && this._cgIdx.ver === city.roadVersion && this._cgIdx.terrain === city.terrainVer) return this._cgIdx;
     const byName = new Map();
     for (const L of car.links) { if (L.cls < 3 || !L.name) continue; let a = byName.get(L.name); if (!a) { a = []; byName.set(L.name, a); } a.push(L); }
     const ways = [], STEP = 0.4;
-    for (const w of city.roadWays) {
-      const gr = city.roadGroups[w.g];
-      if (gr.cls < 3 || (gr.flags & 4)) continue;   // 快速路、主干道（匝道不画）
-      const p = w.p, xs = [], ys = [], vt = [];
-      for (let k = 0; k + 3 < p.length; k += 2) {
-        const ax = p[k], ay = p[k + 1], bx = p[k + 2], by = p[k + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / STEP));
-        for (let q = k === 0 ? 0 : 1; q <= n; q++) { xs.push(ax + (bx - ax) * q / n); ys.push(ay + (by - ay) * q / n); vt.push(q === 0 || q === n ? 1 : 0); }
-      }
-      const near = byName.get(w.g + 1) || [], lk = new Int32Array(xs.length);
-      for (let i = 0; i < xs.length; i++) {
-        let best = -1, bd = 1.0;
-        for (const L of near) {
-          const b = L.bbox; if (xs[i] < b[0] - 1 || xs[i] > b[2] + 1 || ys[i] < b[1] - 1 || ys[i] > b[3] + 1) continue;
-          const d = U.distToPoly(xs[i], ys[i], L.pts); if (d < bd) { bd = d; best = L.id; }
+    for (const way of city.roadWays) {
+      const gr = city.roadGroups[way.g];
+      if (!city.roadsBuilt[way.g] || gr.cls < 3 || (gr.flags & 4)) continue;
+      for (const w of this.roadParts(city, way)) {   // 快速路、主干道（匝道不画）
+        const p = w.p, xs = [], ys = [], vt = [];
+        for (let k = 0; k + 3 < p.length; k += 2) {
+          const ax = p[k], ay = p[k + 1], bx = p[k + 2], by = p[k + 3], n = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / STEP));
+          for (let q = k === 0 ? 0 : 1; q <= n; q++) { xs.push(ax + (bx - ax) * q / n); ys.push(ay + (by - ay) * q / n); vt.push(q === 0 || q === n ? 1 : 0); }
         }
-        if (best < 0) { const L = this.pickLink(xs[i], ys[i], 0.6); if (L && L.cls >= 2) best = L.id; }
-        lk[i] = best;
+        const near = byName.get(w.g + 1) || [], lk = new Int32Array(xs.length);
+        for (let i = 0; i < xs.length; i++) {
+          let best = -1, bd = 1.0;
+          for (const L of near) {
+            const b = L.bbox; if (xs[i] < b[0] - 1 || xs[i] > b[2] + 1 || ys[i] < b[1] - 1 || ys[i] > b[3] + 1) continue;
+            const d = U.distToPoly(xs[i], ys[i], L.pts); if (d < bd) { bd = d; best = L.id; }
+          }
+          if (best < 0) { const L = this.pickLink(xs[i], ys[i], 0.6); if (L && L.cls >= 2) best = L.id; }
+          lk[i] = best;
+        }
+        ways.push({ g: w.g, cls: gr.cls, bbox: w.bbox, xs: Float32Array.from(xs), ys: Float32Array.from(ys), vt: Uint8Array.from(vt), lk: lk });
       }
-      ways.push({ g: w.g, cls: gr.cls, bbox: w.bbox, xs: Float32Array.from(xs), ys: Float32Array.from(ys), vt: Uint8Array.from(vt), lk: lk });
     }
-    this._cgIdx = { city: city, ver: city.roadVersion, ways: ways };
+    this._cgIdx = { city: city, ver: city.roadVersion, terrain: city.terrainVer, ways: ways };
     this._cgRuns = null;
     return this._cgIdx;
   };
@@ -3960,7 +4159,7 @@
     let basis=this.layerOpt.cong||'now';
     const ref = (basis === 'build' || basis === 'year') && g.congRefFor ? g.congRefFor(basis) : null, diff = !!ref;
     if ((basis === 'build' || basis === 'year') && !ref) basis = 'am';   // 还没有对比基准：按早高峰拥堵程度显示
-    const key = model.version + ':' + basis + ':' + (ref ? ref.ym + ':' + (ref.label || '') : '') + ':' + Math.floor(g.clock.minute / 5) + ':' + city.roadVersion;
+    const key = model.version + ':' + basis + ':' + (ref ? ref.ym + ':' + (ref.label || '') : '') + ':' + Math.floor(g.clock.minute / 5) + ':' + city.roadVersion + ':' + city.terrainVer;
     if (this._cgRuns && this._cgRunsKey === key) return this._cgRuns;
     const W = model.weights(g.clock.minute), sat = new Map();
     const satOf = function (id) {
@@ -4669,13 +4868,13 @@
     const e = this.P(P0.ex, P0.ey, 0, {}), q = this.P(P0.ex + v[0], P0.ey + v[1], 0, {});
     let dx = q.x - e.x, dy = q.y - e.y, L = Math.hypot(dx, dy) || 1; dx /= L; dy /= L;
     // 城市连接的接驳口在地图中间：提示朝对岸方向摆放
-    const wn = f.ext.gate ? [Math.round(v[0]) || 0, Math.round(v[1]) || 1] : P0.ex <= 1e-6 ? [-1, 0] : P0.ex >= CFG.W - 1e-6 ? [1, 0] : P0.ey <= 1e-6 ? [0, -1] : [0, 1];
-    const m = this.P(P0.ex + wn[0], P0.ey + wn[1], 0, {}), t = this.P(P0.ex + wn[1], P0.ey + wn[0], 0, {});
+    const wn = f.ext.gate ? (v[0] || v[1] ? v : [0, 1]) : P0.ex <= 1e-6 ? [-1, 0] : P0.ex >= CFG.W - 1e-6 ? [1, 0] : P0.ey <= 1e-6 ? [0, -1] : [0, 1];
+    const m = this.P(P0.ex + wn[0], P0.ey + wn[1], 0, {}), t = this.P(P0.ex - wn[1], P0.ey + wn[0], 0, {});
     let nx = m.x - e.x, ny = m.y - e.y; L = Math.hypot(nx, ny) || 1; nx /= L; ny /= L;
     // o：画面上垂直于边缘线、指向地图外的方向（立体视图中与 n 不同），用来保证提示整块落在边缘线外
     let ox = -(t.y - e.y), oy = t.x - e.x; L = Math.hypot(ox, oy) || 1; ox /= L; oy /= L;
     if (ox * nx + oy * ny < 0) { ox = -ox; oy = -oy; }
-    return { e: e, dx: dx, dy: dy, n: { x: nx, y: ny }, o: { x: ox, y: oy } };
+    return { e: e, dx: dx, dy: dy, n: { x: nx, y: ny }, o: { x: ox, y: oy }, gate: f.ext.gate };
   };
   // 把以 (x, y, w, h) 为外框的提示推到边缘线外至少 gap px，返回需要平移的量
   function gatePush(G, x, y, w, h, gap) {
@@ -4689,7 +4888,16 @@
     ctx.font = TYPE.title; const w1 = title ? this.textWidth(ctx, title) : 0;
     ctx.font = TYPE.meta; const w2 = sub ? this.textWidth(ctx, sub) : 0;
     const tw = Math.max(w1, w2), pad = 5, h = Math.max(gr * 2 + pad * 2, sub ? 42 : 28), w = gr * 2 + pad * 2 + (tw ? tw + 18 : 0);
-    const n = G.n, side = Math.abs(n.x) > Math.abs(n.y), flip = side && n.x < 0;   // 东西两侧：卡片沿法向展开；西侧徽标在右端
+    const n = G.n;
+    // 境内口岸按对岸方向固定卡片位置，避免随屏幕边缘夹紧时盖到接驳点。
+    if (G.gate) {
+      const distance = 22 + Math.abs(n.x) * w / 2 + Math.abs(n.y) * h / 2;
+      const x = G.e.x + n.x * distance - w / 2, y = G.e.y + n.y * distance - h / 2;
+      const bx = x + pad + gr, by = y + h / 2;
+      const lx = U.clamp(G.e.x, x, x + w), ly = U.clamp(G.e.y, y, y + h);
+      return { x: x, y: y, w: w, h: h, bx: bx, by: by, gr: gr, lx: lx, ly: ly, tx: bx + gr + 10, title: title, sub: sub };
+    }
+    const side = Math.abs(n.x) > Math.abs(n.y), flip = side && n.x < 0;
     const off = 22 + (side ? pad + gr : h / 2);   // 让出边缘线上接驳口（双向箭头）的位置
     let bx = G.e.x + n.x * off, by = G.e.y + n.y * off;
     let x = flip ? bx + gr + pad - w : bx - gr - pad, y = by - h / 2;
@@ -4716,9 +4924,10 @@
   };
   // 接驳口到提示卡徽标的引线
   function gateLeader(ctx, G, c, col, dashed, w) {
-    const vx = c.bx - G.e.x, vy = c.by - G.e.y, L = Math.hypot(vx, vy);
-    if (L <= c.gr + 4) return;
-    ctx.beginPath(); ctx.moveTo(G.e.x + vx / L * 4, G.e.y + vy / L * 4); ctx.lineTo(c.bx - vx / L * c.gr, c.by - vy / L * c.gr);
+    const px = c.lx ?? c.bx, py = c.ly ?? c.by, radius = c.lx == null ? c.gr : 0;
+    const vx = px - G.e.x, vy = py - G.e.y, L = Math.hypot(vx, vy);
+    if (L <= radius + 4) return;
+    ctx.beginPath(); ctx.moveTo(G.e.x + vx / L * 4, G.e.y + vy / L * 4); ctx.lineTo(px - vx / L * radius, py - vy / L * radius);
     ctx.setLineDash(dashed ? [3, 4] : []); ctx.lineWidth = w; ctx.strokeStyle = col; ctx.stroke(); ctx.setLineDash([]);
   }
   // 建站、绘线时在地下视图和分析图层中也保留口岸标记和点击位置。
@@ -4738,13 +4947,13 @@
       const opacity = gate && building ? 1 : alpha;
       if (opacity <= 0.02) continue;
       const G = this.gateGeom(f), e = G.e, n = G.n;
-      if (e.x < -240 || e.x > this.w + 240 || e.y < -240 || e.y > this.h + 240) { this._portals.push({ f: f, sx: e.x, sy: e.y, card: null }); continue; }
-      const active = gate || (yr >= f.open && (f.close == null || yr < f.close));
+      const margin = gate ? 340 : 240;
+      if (e.x < -margin || e.x > this.w + margin || e.y < -margin || e.y > this.h + margin) { this._portals.push({ f: f, sx: e.x, sy: e.y, card: null }); continue; }      const active = gate || (yr >= f.open && (f.close == null || yr < f.close));
       const lk = active ? Fac.extLink(f, g) : null;
       const L = lk ? net.lines[lk.lines[0]] : null, col = L ? AX.line(L) : (active ? accent : grey);
       const km = f.ext.km + ' km', labels = z >= 6 && this.labelsOn;
       const sub = f.ext.gate ? (lk ? '已接通 ⇄ ' + (f.ext.to || '对岸') : '线路修到这里即接通' + (f.ext.to ? ' ' + f.ext.to : ''))
-        : !active ? (f.open > yr ? Math.floor(f.open) + ' 年启用 · 地图外 ' + km : '已停用') : lk ? '已接通 ⇄ ' + (lk.portal ? '接驳口' : '经「' + lk.st.name + '」') : '地图外 ' + km + ' · 线路修到边缘即接通';
+        : !active ? (f.open > yr ? Fac.openDate(f) + '启用 · 地图外 ' + km : '已停用') : lk ? '已接通 ⇄ ' + (lk.portal ? '接驳口' : '经「' + lk.st.name + '」') : '地图外 ' + km + ' · 线路修到边缘即接通';
       const card = this.gateCard(ctx, G, gr, labels ? Fac.shortName(f) : '', labels ? sub : '');
       card.gate = f.ext.gate;
       this._portals.push({ f: f, sx: e.x, sy: e.y, card: card });
@@ -5494,7 +5703,8 @@
       const facilities = CM.Fac ? CM.Fac.list(city) : [], hubs = new Set(), models = new Map();
       for (const f of facilities) if (f.T.hub && CM.Fac.active(f, yr, city) && f.lmK >= 0) hubs.add(f.lmK);
       for (const it of this.extraModels()) if (it.lm && (it.fac || it.id.charAt(0) === 'h')) models.set(it.fac || it.id.slice(1), it.lm);
-      for (let k = 0; k < D.landmarks.length; k++) if (city.landmarkOn[k] && (z >= 13 || hubs.has(k))) { const lm = D.landmarks[k]; mapLabels.push({ x: lm.x, y: lm.y, h: lm.h || 54, name: lm.name, hub: hubs.has(k) }); }
+      for (let k = 0; k < D.landmarks.length; k++) if (city.landmarkOn[k] && (z >= 13 || hubs.has(k))) { const lm = D.landmarks[k]; mapLabels.push({ x: lm.x, y: lm.y, h: lm.bridge ? lm.bridge.deck || 0 : lm.h || 54, name: lm.name, hub: hubs.has(k) }); }
+      if (CM.BgNet && z >= 13) for (const p of CM.BgNet.piers(yr, city)) mapLabels.push({ x: p.x, y: p.y, h: 0, name: p.name, hub: false });
       for (const f of facilities) {
         if (f.ext || f.lmK >= 0 || f.gen || !CM.Fac.active(f, yr, city) || (!f.T.hub && z < 18)) continue;
         const model = models.get(f.id);
@@ -5614,27 +5824,29 @@
       const minCls = z >= 28 ? 2 : 3;
       let placedN = 0;
       for (const k of CM.Geo.query(city.roadWayBk, v.x0, v.y0, v.x1, v.y1)) {
-        const w = city.roadWays[k], gr = city.roadGroups[w.g];
-        if (gr.cls < minCls || !gr.name || (gr.flags & 6) || !city.roadsBuilt[w.g] || seen.has(gr.name)) continue;
-        const p = w.p;
-        let geom = this.roadLabelGeom.get(w);
-        if (!geom) {
-          let len = 0;
-          for (let q = 2; q < p.length; q += 2) len += Math.hypot(p[q] - p[q - 2], p[q + 1] - p[q - 1]);
-          let acc = 0, mx = p[0], my = p[1];
-          for (let q = 2; q < p.length; q += 2) { const d = Math.hypot(p[q] - p[q - 2], p[q + 1] - p[q - 1]); if (acc + d >= len / 2) { const t = (len / 2 - acc) / (d || 1); mx = p[q - 2] + (p[q] - p[q - 2]) * t; my = p[q - 1] + (p[q + 1] - p[q - 1]) * t; break; } acc += d; }
-          geom = { len: len, x: mx, y: my }; this.roadLabelGeom.set(w, geom);
-        }
-        const len = geom.len;
-        if (len < 2.4) continue;
-        const pt = this.P(geom.x, geom.y, 0, tmp), px = pt.x, py = pt.y;
-        if (px < 0 || py < 0 || px > this.w || py > this.h) continue;
-        const text = gr.name, tw = this.textW(TYPE.road, text);
-        if (!fits(px - tw / 2, py - 7, px + tw / 2, py + 7)) continue;
-        if (++placedN > 80) break;
-        seen.add(gr.name);
-        put(text, px, py, TYPE.road, TH.roadInk, true, 1, 1, -1, geom.x, geom.y, 0);
-      }
+        const way = city.roadWays[k], gr = city.roadGroups[way.g];
+        if (gr.cls < minCls || !gr.name || (gr.flags & 6) || !city.roadsBuilt[way.g] || seen.has(gr.name)) continue;
+        for (const w of this.roadParts(city, way)) {
+          const p = w.p;
+          let geom = this.roadLabelGeom.get(w);
+          if (!geom) {
+            let len = 0;
+            for (let q = 2; q < p.length; q += 2) len += Math.hypot(p[q] - p[q - 2], p[q + 1] - p[q - 1]);
+            let acc = 0, mx = p[0], my = p[1];
+            for (let q = 2; q < p.length; q += 2) { const d = Math.hypot(p[q] - p[q - 2], p[q + 1] - p[q - 1]); if (acc + d >= len / 2) { const t = (len / 2 - acc) / (d || 1); mx = p[q - 2] + (p[q] - p[q - 2]) * t; my = p[q - 1] + (p[q + 1] - p[q - 1]) * t; break; } acc += d; }
+            geom = { len: len, x: mx, y: my }; this.roadLabelGeom.set(w, geom);
+          }
+          const len = geom.len;
+          if (len < 2.4) continue;
+          const pt = this.P(geom.x, geom.y, 0, tmp), px = pt.x, py = pt.y;
+          if (px < 0 || py < 0 || px > this.w || py > this.h) continue;
+          const text = gr.name, tw = this.textW(TYPE.road, text);
+          if (!fits(px - tw / 2, py - 7, px + tw / 2, py + 7)) continue;
+          if (++placedN > 80) break;
+          seen.add(gr.name);
+          put(text, px, py, TYPE.road, TH.roadInk, true, 1, 1, -1, geom.x, geom.y, 0);
+          break;
+        }      }
     }
     // 区名
     if (z < 16 && mapOn && this.layer !== 'flow') {
@@ -5656,7 +5868,7 @@
         const cx = f.x, cy = f.y;
         if (cx < v.x0 || cx > v.x1 || cy < v.y0 || cy > v.y1) continue;
         const p = this.P(cx, cy, 0);
-        const text = '🔒 ' + rg.name.replace(/（.*）/, '') + ' · ' + (f.year ? '参考 ' + f.year + ' 年开放' : (rg.lockNote || '不开放'));
+        const text = '🔒 ' + rg.name.replace(/（.*）/, '') + ' · ' + (f.year ? '参考 ' + f.year + ' 年开放' : (rg.passOnly ? '可穿过，不能设站' : '不开放'));
         const w = this.textW(TYPE.meta, text);
         // 靠近地图边缘的区域：标签整体收进地图范围，不越出边界
         const xl = this.P(0, cy, 0).x + w / 2 + 6, xr = this.P(CFG.W, cy, 0).x - w / 2 - 6;
@@ -5708,6 +5920,12 @@
 
   // ---------------- 拾取 ----------------
   Renderer.prototype.pickStation = function (sx, sy) {
+    let node = null, nodeDistance = 9;
+    for (const p of this._vnPx || []) {
+      const d = Math.hypot(sx - p.x, sy - p.y);
+      if (d < nodeDistance) { node = p.id; nodeDistance = d; }
+    }
+    if (node) return node;
     if (!this.stPx) return null;
     let best = null, bd = 1e9;
     for (const p of this.stPx) {

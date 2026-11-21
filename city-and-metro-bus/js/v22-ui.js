@@ -65,10 +65,16 @@
     const shineG = el('g', { mask: 'url(#' + uid + 'a)' }, mark), shine = el('rect', { x: -260, y: -40, width: 150, height: 464, fill: 'url(#' + uid + 'g)', transform: 'skewX(-16)' }, shineG);
     const logo = h('div', { class: 'ld-logo' }); logo.appendChild(svg);
     const bgOn = !!(this._stageBg && this._stageBg.classList.contains('on')), mp = mapId && CM.MAPS[mapId];
-    const again = /ld-screen/.test(this.screen.className) && this.screen.className.indexOf('hidden') < 0;   // 读档的第二段载入：原地更新，不再播放入场
+    const again = this.screen.classList.contains('ld-screen') && !this.screen.classList.contains('hidden');   // 读档的第二段载入不重复入场
     this.openScreen(h('div', { class: 'card ld-card' }, logo, this._loadNote, track, h('div', { class: 'ld-row' }, stage, pct)), null, mp ? 'ld-screen' + (again ? ' noanim' : '') : '', mp && !again ? (bgOn ? 'zoom' : 'fade') : null);
-    if (mp && !bgOn) this.stageBg(CM.mapThumb(mapId, dark ? 'dark' : 'light'));
+    const thumb = mp && !bgOn ? CM.mapThumb(mapId, dark ? 'dark' : 'light') : null;
+    if (thumb) this.stageBg(thumb);
     const L = this._ld = { goal: 0.02, disp: 0, cap: 0.08, done: false, t: performance.now(), t0: performance.now(), fill: fill, head: head, pct: pct, stage: stage, stops: track.querySelectorAll('.ld-stop'), at: stops };
+    if (mp && !bgOn && !thumb) {
+      CM.mapThumbAsync(mapId, dark ? 'dark' : 'light').then(function (src) {
+        if (src && self._ld === L && !L.done) self.stageBg(src);
+      });
+    }
     const still = CM.Settings.reducedMotion(), T = LD_T;
     const ease = function (x) { x = U.clamp(x, 0, 1); return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2; };   // 三次缓入缓出
     const draw = function (e, u) { e.setAttribute('stroke-dashoffset', (1 - u).toFixed(4)); };
@@ -173,8 +179,6 @@
       h('span', { class: 'ec-dot' }), h('span', { class: 'tx' }, h('span', { class: 'k' }, '发展阶段'), h('span', { class: 'v' }, '')), h('span', { class: 'ec-prog' }, h('i')));
     this.pills.date.el.insertAdjacentElement('afterend', this.eraChip);
     this.histHost = h('div', { id: 'histHost' }); this.feed.appendChild(this.histHost); this.clearHist();
-    // 阶段背景先整段翻译再分行；切语言时重新构造，避免逐行翻译遗留混排。
-    if (CM.I18n) CM.I18n.on(() => { if (this.topIs(['era'])) this.rerenderPage(); });
   };
   const attach = UI.prototype.attachGame;
   UI.prototype.attachGame = function (g) {

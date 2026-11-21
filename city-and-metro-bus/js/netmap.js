@@ -136,11 +136,11 @@
       if (!best || score < best.score) best = { raw: clean, radius: radius, samples: rounded.samples, obstacles: obstacles, score: score };
     };
     if (via) {
-      // 车站与交叉点之间的每一小段都严格走八方向：段很短，按 8 px 容差直连会斜得很明显，没对齐时先走 45° 再走直线
+      // 车站、交叉点与折点之间的每一小段都走八方向（排版已对齐，差 3 px 以内直接连，不折出小钩）；没对齐时先走 45° 再走直线
       const pts = [a].concat(via.map(function (p) { return [p[0] + base.ox, p[1] + base.oy]; }), [b]), raw = [a];
       for (let i = 1; i < pts.length; i++) {
         const p = pts[i - 1], q = pts[i], dx = q[0] - p[0], dy = q[1] - p[1], m = Math.min(Math.abs(dx), Math.abs(dy));
-        if (Math.min(Math.abs(dx), Math.abs(dy), Math.abs(Math.abs(dx) - Math.abs(dy))) >= 1) raw.push([p[0] + Math.sign(dx) * m, p[1] + Math.sign(dy) * m]);
+        if (Math.min(Math.abs(dx), Math.abs(dy), Math.abs(Math.abs(dx) - Math.abs(dy))) >= 3) raw.push([p[0] + Math.sign(dx) * m, p[1] + Math.sign(dy) * m]);
         raw.push(q);
       }
       inspect(raw, 14, false);
@@ -212,7 +212,7 @@
     const pos = CM.NetLayout.solve(lay, net, unitOf(spacing));
     base.via = pos.via || null; base.virt = pos.virt || null;   // 两条线实际相交的点（见 netlayout.js crossings）
     base.bent = pos.bent || null;                                // 需要走 45° 台阶的站间连线（过约束无法严格对齐，见 netlayout.js）
-    base.snap = new Map();
+    base.magnify = pos.warp || null;    base.snap = new Map();
     for (const sid of lay.st) { const s = net.stations[sid]; base.snap.set(s.x + ',' + s.y, pos.get(sid)); }
   }
 
@@ -338,12 +338,12 @@
     if (wShapes && wShapes.key === key) return wShapes;
     const Geo = CM.Geo, W = CM.CFG.W, H = CM.CFG.H, polys = [], rivers = [], named = [];
     const flat = function (pts) { const f = new Float64Array(pts.length * 2); for (let i = 0; i < pts.length; i++) { f[2 * i] = pts[i][0]; f[2 * i + 1] = pts[i][1]; } return f; };
-    // 切角一遍（Chaikin）让轮廓圆润，再加密到约 0.2 个站距一个点：只有顶点跟着三角网变形，点太稀时两点之间的直边会切过岸边的线路。
+    // 切角两遍让轮廓圆润，再加密到约 0.2 个站距一个点，避免变形后的长直边切穿岸边。
     // 简化和切角都只在约 50 m 内改动岸线（tol）：沿岸的线路离水面常常只有几十米，改动大了水面会盖到线路和车站上
     const tol = Math.min(med * 0.15, 0.2);
     const smooth = function (pts, closed) {
       let out = pts;
-      for (let it = 0; it < 1; it++) {
+      for (let it = 0; it < 2; it++) {
         const n = out.length, next = closed ? [] : [out[0]];
         for (let i = 0; i < (closed ? n : n - 1); i++) { const a = out[i], b = out[(i + 1) % n]; next.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]); }
         if (!closed) next.push(out[n - 1]);
@@ -477,16 +477,27 @@
       l.push(X.length); X.push(G[i][0]); Y.push(G[i][1]); TX.push(P[i][0]); TY.push(P[i][1]);
     }
     const ns = X.length;
+    // 车站被排版挪动的距离（换回地理单位）：固定点离车站不到挪动量的两倍时不放，三角网不会翻折
+    const disp = []; for (let s = 0; s < ns; s++) disp.push(Math.hypot(TX[s] - (sc * X[s] + tx), TY[s] - (sc * Y[s] + ty)) / (sc || 1));
+    const foldRisk = function (px, py) { for (let s = 0; s < ns; s++) if (disp[s] > 0 && Math.hypot(X[s] - px, Y[s] - py) < disp[s] * 2) return true; return false; };
+    const nearSt = function (px, py, rr) { for (let i = -1; i <= 1; i++) for (let j = -1; j <= 1; j++) { const l = seen.get(bk(px + i * L, py + j * L)); if (l) for (const s of l) if (Math.hypot(X[s] - px, Y[s] - py) < rr) return true; } return false; };
+    // 地图边框（v3.0 玩家反馈：线路图和回放的边缘扭曲）：边框上每半格放一个固定点，框外格点也固定，只做整体缩放平移，边框保持矩形；
+    // 框内远离车站的格点挪动量随离边框越近越小（三格内渐变到 0），水面在边框附近平顺过渡。离车站不到 1.5 个站距的边框点不放，避免折叠
+    for (const b of [[0, 0, W, 0], [W, 0, W, H], [W, H, 0, H], [0, H, 0, 0]]) {
+      const len = Math.hypot(b[2] - b[0], b[3] - b[1]), n = Math.max(1, Math.ceil(len / (L / 2)));
+      for (let k = 0; k < n; k++) { const px = b[0] + (b[2] - b[0]) * k / n, py = b[1] + (b[3] - b[1]) * k / n; if (nearSt(px, py, med * 1.5) || foldRisk(px, py)) continue; X.push(px); Y.push(py); TX.push(sc * px + tx); TY.push(sc * py + ty); }
+    }
     // 网外格点：离控制点 1.5 个站距以外；挪动量按控制点挪动量加权平均（越近权重越大），格点略微错开，避免四点共圆
     let r = 12345; const rnd = function () { r = (r * 16807) % 2147483647; return r / 2147483647 - 0.5; };
     for (let y = -L; y <= H + L + 1e-6; y += L) for (let x = -L; x <= W + L + 1e-6; x += L) {
       const px = x + rnd() * L * 0.02, py = y + rnd() * L * 0.02;
-      let close = false;
-      for (let i = -1; i <= 1 && !close; i++) for (let j = -1; j <= 1 && !close; j++) { const l = seen.get(bk(px + i * L, py + j * L)); if (l) for (const s of l) if (Math.hypot(X[s] - px, Y[s] - py) < med * 1.5) { close = true; break; } }
-      if (close) continue;
+      if (nearSt(px, py, med * 1.5)) continue;
+      const inside = Math.min(px, py, W - px, H - py), risky = foldRisk(px, py);   // 到边框的距离（框外为负）
+      if (inside <= L * 0.25 && !risky) { X.push(px); Y.push(py); TX.push(sc * px + tx); TY.push(sc * py + ty); continue; }   // 贴边或框外：固定
       let sw = 0, sx = 0, sy = 0;
       for (let s = 0; s < ns; s++) { const d2 = (X[s] - px) * (X[s] - px) + (Y[s] - py) * (Y[s] - py) + 1e-6, w = 1 / (d2 * d2); sw += w; sx += w * (TX[s] - (sc * X[s] + tx)); sy += w * (TY[s] - (sc * Y[s] + ty)); }
-      X.push(px); Y.push(py); TX.push(sc * px + tx + sx / sw); TY.push(sc * py + ty + sy / sw);
+      const fall = risky ? 1 : Math.min(1, inside / (L * 3));
+      X.push(px); Y.push(py); TX.push(sc * px + tx + fall * sx / sw); TY.push(sc * py + ty + fall * sy / sw);
     }
     // 三角形按外接框放进格子，变形时按格子找所在三角形
     const tri = delaunay(X, Y), cell = Math.max(med * 2, Math.max(W, H) / 50), grid = new Map(), gk = function (i, j) { return i * 100003 + j; };
@@ -506,10 +517,37 @@
       return [sc * x + tx, sc * y + ty];
     };
   }
-  // 按站位变形后的水面（线路图使用）：polys / rivers / edge 为扁平坐标数组。G、P：车站的地理、图上坐标
-  function waterLayer(city, G, P, med) {
+  // 按站位变形后的水面（线路图和成长回放的每一帧都用它）：polys / rivers / edge 为扁平坐标数组。G、P：车站的地理、图上坐标
+  // 排版的小幅挪动（v3.1）：A 为车站、交叉点、折点按等比缩放的真实位置，P 为排好的位置，挪动量 P − A 用高斯核平滑插值
+  // （反复修正系数，在这些点上正好等于挪动量），离开它们约两个站距、靠近地图边框时渐变为 0。比三角网分片插值平顺，岸线不出折角
+  function residualWarp(A, P, unit, frame) {
+    const n = A.length, sig = unit * 0.75, cut = sig * 3.2, w0 = Math.exp(-Math.pow(unit * 2, 2) / (2 * sig * sig)), cell = cut, grid = new Map(), key = function (i, j) { return i * 100003 + j; };
+    const dx = new Float64Array(n), dy = new Float64Array(n), cx = new Float64Array(n), cy = new Float64Array(n);
+    for (let i = 0; i < n; i++) { dx[i] = P[i][0] - A[i][0]; dy[i] = P[i][1] - A[i][1]; cx[i] = dx[i]; cy[i] = dy[i]; const k = key(Math.floor(A[i][0] / cell), Math.floor(A[i][1] / cell)); let l = grid.get(k); if (!l) grid.set(k, l = []); l.push(i); }
+    const fall = function (x, y) { const d = Math.min(x - frame[0], y - frame[1], frame[2] - x, frame[3] - y); return Math.max(0, Math.min(1, d / (unit * 1.5))); };
+    const raw = function (x, y, out) {
+      const ci = Math.floor(x / cell), cj = Math.floor(y / cell); let sw = w0, sx = 0, sy = 0;
+      for (let a = ci - 1; a <= ci + 1; a++) for (let b = cj - 1; b <= cj + 1; b++) {
+        const l = grid.get(key(a, b)); if (!l) continue;
+        for (const i of l) { const ex = A[i][0] - x, ey = A[i][1] - y, d2 = ex * ex + ey * ey; if (d2 > cut * cut) continue; const w = Math.exp(-d2 / (2 * sig * sig)); sw += w; sx += w * cx[i]; sy += w * cy[i]; }
+      }
+      out[0] = sx / sw; out[1] = sy / sw;
+    };
+    const tmp = [0, 0];
+    for (let it = 0; it < 40; it++) {
+      let worst = 0;
+      for (let i = 0; i < n; i++) { raw(A[i][0], A[i][1], tmp); const ex = dx[i] - tmp[0], ey = dy[i] - tmp[1]; cx[i] += ex * 0.9; cy[i] += ey * 0.9; worst = Math.max(worst, Math.abs(ex), Math.abs(ey)); }
+      if (worst < 0.2) break;
+    }
+    return function (x, y) { raw(x, y, tmp); const f = fall(x, y); return [x + tmp[0] * f, y + tmp[1] * f]; };
+  }
+  // mag：排版用的等比缩放（地理 → 图上，带 frame、unit；见 netlayout.js scaleMap）。给了它时水面与车站同一比例，再补排版的小幅挪动
+  function waterLayer(city, G, P, med, mag) {
     if (!CM.Geo || !CM.Geo.water || !city || !city.wmask || G.length < 2) return null;
-    const S = waterShapes(city, med), warp = waterWarp(G, P, med);
+    const S = waterShapes(city, med);
+    let warp;
+    if (mag) { const res = residualWarp(G.map(function (p) { return mag(p[0], p[1]); }), P, mag.unit, mag.frame); warp = function (x, y) { const q = mag(x, y); return res(q[0], q[1]); }; }
+    else warp = waterWarp(G, P, med);
     const map = function (f) { const o = new Float32Array(f.length); for (let k = 0; k + 1 < f.length; k += 2) { const q = warp(f[k], f[k + 1]); o[k] = q[0]; o[k + 1] = q[1]; } return o; };
     return { polys: S.polys.map(map), rivers: S.rivers.map(function (r) { return { p: map(r.p), w: r.w }; }), named: S.named.map(function (n) { return { name: n.name, q: warp(n.x, n.y), size: n.size }; }), edge: map(S.edge) };
   }
@@ -519,7 +557,7 @@
     const G = [], P = [];
     for (const sid of lay.st) { const s = net.stations[sid]; G.push([s.x, s.y]); P.push(base(s.x, s.y)); }
     if (base.virt) for (const v of base.virt) { G.push(v.g); P.push([v.p[0] + base.ox, v.p[1] + base.oy]); }   // 两条线的交叉点也跟着排版走
-    const L = waterLayer(game() && game().city, G, P, medianSpacing(lay.edges.map(function (e) { return e.geo; })));
+    const L = waterLayer(game() && game().city, G, P, medianSpacing(lay.edges.map(function (e) { return e.geo; })), base.warp);
     if (!L) return '';
     // 变形后在图上按 0.7 px 再简化一次，加密出来的点不全写进 SVG
     const d = function (f, closed) {
@@ -781,6 +819,8 @@
     for (const anchors of stationAnchors.values()) anchors.forEach(bound);
     const pad = 64, W = x1 - x0 + 2 * pad, H = y1 - y0 + 2 * pad;
     base.ox = pad - x0; base.oy = pad - y0;
+    // 江海底图的变形（地理坐标 → 图上坐标），带地图边框在图上的位置
+    if (base.magnify) { const mg = base.magnify; base.warp = function (x, y) { const q = mg(x, y); return [q[0] + base.ox, q[1] + base.oy]; }; base.warp.frame = [base.ox, base.oy, base.ox + mg.W, base.oy + mg.H]; base.warp.unit = mg.unit; }
     for (const track of tracks) {
       for (const p of track.screen) { p[0] += base.ox; p[1] += base.oy; }
       if (track.route) for (const p of track.route.raw) { p[0] += base.ox; p[1] += base.oy; }
@@ -915,6 +955,7 @@
     let lab = '', dots = '', needsRoom = false;
     const DIRS = [[0, -1], [0, 1], [1, 0], [-1, 0], [0.707, -0.707], [-0.707, -0.707], [0.707, 0.707], [-0.707, 0.707]];
     for (const i of order) {
+      if (net.stations[lay.st[i]].v) continue;   // 虚拟节点只是版面上的拐点，不画站点和站名
       const s = net.stations[lay.st[i]], xfer = linesOf[i].length > 1, walk = walkSet.has(i), x = px(i), y = py(i);
       measure.font = (xfer || walk ? '700 ' : '500 ') + LABEL_SIZE + 'px ' + font;
       const rows = stationText(s.name, measure), lineHeight = LABEL_SIZE + 5;
@@ -1225,7 +1266,7 @@
       c.fillStyle = INK; c.textBaseline = 'alphabetic';
       c.font = '800 ' + (30 * sc) + 'px ' + font; c.fillText((D.city || '') + (isGeo ? '地铁地理线网图' : '地铁线路示意图'), M0, 56 * sc);
       c.font = (15 * sc) + 'px ' + font; c.fillStyle = P.sub;
-      let nSt = 0; for (const id in net.stations) if (M.stationLines(net, id).length) nSt++;
+      let nSt = 0; for (const id in net.stations) if (!net.stations[id].v && M.stationLines(net, id).length) nSt++;
       c.fillText('游戏时间 ' + g.clock.y + ' 年 ' + g.clock.m + ' 月' + (useDraft ? '（含建设草案）' : '') + ' · ' + lines.length + ' 条线路 · ' + nSt + ' 座车站 · 线路总长 ' + kmText(KM.total) + ' · 《城市与地铁》', M0, 84 * sc);
       c.drawImage(img, (cw - W * sc) / 2, headH, W * sc, H * sc);
       // 线路图例
@@ -1250,7 +1291,8 @@
       c.textAlign = 'left';
       cv.toBlob(function (blob) {
         if (!blob) { fail('无法生成图片'); return; }
-        const filename = (isGeo ? '地铁地理线网图-' : '地铁线路示意图-') + (D.city || '城市') + '-' + g.clock.y + '年' + g.clock.m + '月.png';
+        const tr = CM.I18n ? CM.I18n.text : s => s;
+        const filename = tr(isGeo ? '地铁地理线网图' : '地铁线路示意图') + '-' + tr(D.city || '城市') + '-' + U.fileDate(g.clock.y, g.clock.m) + '.png';
         try { U.downloadBlob(blob, filename); ui.toast('已导出线路示意图（' + cv.width + '×' + cv.height + ' PNG）', 'good'); setExporting(false); } catch (e) { fail('无法保存图片：' + e.message); }
       }, 'image/png');
     } catch (err) { console.error(err); fail('无法绘制示意图'); } };
@@ -1281,7 +1323,8 @@
     }
     // 线路多时条目放不下：滚轮横向滚动
     chips.addEventListener('wheel', function (e) { if (chips.scrollWidth > chips.clientWidth && Math.abs(e.deltaY) > Math.abs(e.deltaX)) { chips.scrollLeft += e.deltaY; e.preventDefault(); } }, { passive: false });
-    const nLines = chips.childNodes.length, nStations = Object.keys(net.stations).filter(function (sid) { return M.stationLines(net, sid).length; }).length;
+    CM.UI.dragStrip(chips, '.nm-chip');
+    const nLines = chips.childNodes.length, nStations = Object.keys(net.stations).filter(function (sid) { return !net.stations[sid].v && M.stationLines(net, sid).length; }).length;
     const head = h('div', { class: 'stats-head nm-head' }, h('span', { class: 'badge b-blue' }, CM.icon('network')),
       h('div', { class: 'nm-heading' }, h('h2', null, (CM.DATA.city || '') + '地铁线网'), h('div', { class: 'tiny muted' }, g.clock.y + ' 年 ' + g.clock.m + ' 月')),
       h('div', { class: 'seg-ctl sm nm-mode', 'aria-label': '线路图布局' }, [[true, '地理线网'], [false, '线路图']].map(function (o) { return h('button', { class: geographic === o[0] ? 'on' : '', 'data-mode': o[0] ? 'geographic' : 'schematic', 'aria-pressed': geographic === o[0] ? 'true' : 'false', 'data-silent': '1', onclick: function () { if (geographic !== o[0]) { geographic = o[0]; CM.Sound && CM.Sound.play('soft'); render(); } } }, o[1]); })),
@@ -1318,7 +1361,7 @@
   const API = {
     root: function () { return root; }, canvas: function () { return root && root.querySelector('.nm-canvas'); }, svg: function () { return root && root.querySelector('.nm-svg'); },
     // 回放跟镜头时直接按新视野重画（回放中大部分图层隐藏，重画很轻）
-    view: function () { return view; }, setView: function () { setView(true, true); }, fitView: fitView, geographic: function () { return geographic; }, spacing: function () { return lastSpacing; },
+    view: function () { return view; }, setView: function (lazy) { setView(!lazy, true); }, fitView: fitView, geographic: function () { return geographic; }, spacing: function () { return lastSpacing; },
     computeRoutes: computeRoutes, hubGeom: hubGeom, palette: palette, medianSpacing: medianSpacing,
     // 测试用：强制「线路图」模式算一遍站位与折线，不碰 DOM（scripts/test-netmap-route.mjs）
     _schematic: function (g, spacing) {
@@ -1329,7 +1372,7 @@
       } finally { geographic = sg; }
     },
     waterLayer: function (G, P, med) { return showTerrain ? waterLayer(game() && game().city, G, P, med) : null; }, mapFont: mapFont, ui: function () { return ui; },
-    setBusy: function (on) { const b = root && root.querySelector('.nm-export'); if (b) b.disabled = on || exporting || !canExport(); },
+    waterLayer: function (G, P, med, magnify) { return showTerrain ? waterLayer(game() && game().city, G, P, med, magnify) : null; }, mapFont: mapFont, ui: function () { return ui; },    setBusy: function (on) { const b = root && root.querySelector('.nm-export'); if (b) b.disabled = on || exporting || !canExport(); },
   };
   const NetMap = {
     open: function (u) {

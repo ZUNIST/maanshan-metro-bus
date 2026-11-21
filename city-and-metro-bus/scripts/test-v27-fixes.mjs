@@ -5,7 +5,7 @@ const load=async f=>vm.runInContext(await fs.readFile(new URL(f,root),'utf8'),c,
 for(const[,f]of(await fs.readFile(new URL('index.html',root),'utf8')).matchAll(/<script src="([^"]+)"/g)){await load(f);if(f==='js/save.js')break;}
 const C=c.CM,M=C.Metro,copy=x=>JSON.parse(JSON.stringify(x)),sum=a=>a.reduce((s,n)=>s+n,0);C.UI=function(){};
 for(const f of ['settings','icons','pages','corp','fleet','opsapp','render','sites','scenery'])await load('js/'+f+'.js');
-assert.equal(C.CFG.GAME_VERSION,'2.7.1');assert.equal(C.CFG.RULES_REVISION,11);assert.equal(C.MAP_ORDER.length,12);assert.equal(C.Fleet.MODELS.length,56);assert.ok(!C.MAPS.sg&&!C.MAPS.ny&&!C.Achievements&&!C.Desktop);
+assert.equal(C.CFG.GAME_VERSION,'2.9.5');assert.ok(C.CFG.RULES_REVISION>=15);assert.equal(C.MAP_ORDER.length,19);assert.equal(C.Fleet.MODELS.length,90);   // 本分支：15 张上游图 + 马鞍山/和县 4 张；78 + 12 款电车/公交assert.ok(C.MAPS.sg&&C.MAPS.ny&&!C.Achievements&&!C.Desktop);
 C.useMap('tutorial');const g=C.Game.create({mode:'free',tutorial:true,seed:20000101}),F=C.Fleet;F.ensure(g);let fixture;
 for(let y=5;y<g.city.H-5&&!fixture;y++)for(let x=5;x<g.city.W-22&&!fixture;x++){
  if([0,4,8,12,16].some(d=>!M.checkSite(g.city,x+d,y,'underground').ok))continue;
@@ -24,18 +24,59 @@ assert.equal((g.draftEval().fleetAdd||[]).length,0,'Extending a manual off route
 for(const dt of ['wd','we'])for(const P of g.model.resultsFor(dt).per){assert.equal(sum(P.load),0);assert.equal(sum(P.stIn),0);assert.equal(sum(P.stOut),0);}
 assert.ok(C.Tasks.crowdOf(g).every(s=>s.noTrain&&s.lf===0));assert.equal(C.OpsAlerts.scan(g).length,0);
 for(let p=0;p<4;p++)F.setManual(g,lid,svc,p,1);g.model.solveNow(4);assert.ok(g.model.daily.metro>0);
-F.setManual(g,lid,svc,0,0);g.model.solveNow(3);assert.equal(sum(g.model.resultsFor('wd').per[0].load),0);assert.ok(sum(g.model.resultsFor('wd').per[1].load)>0);F.setManual(g,lid,svc,0,1);
+F.setManual(g,lid,svc,0,0);g.model.solveNow(3);assert.equal(g.tasks.reviewValue({type:'stationCrowd',station:ids[0]},g),null);assert.equal(sum(g.model.resultsFor('wd').per[0].load),0);assert.ok(sum(g.model.resultsFor('wd').per[1].load)>0);F.setManual(g,lid,svc,0,1);
 assert.equal(C.Model.boardFreq({freq:[3],freqDir:[0,6]},{R:1,C:{routes:[{loop:true}]}},0),6);assert.equal(C.Model.sectionLF(10000,0,1000),0);
 C.ui={setLineLook:(id,patch)=>Object.assign(g.net.lines[id],patch)};
 const express=F.saveService(g,lid,{name:'Express',skip:ids.slice(1,-1)});assert.equal(express.ok,true);F.setMode(g,lid,'auto');F.move(g,g.fleet.trains.filter(t=>t.line===lid).map(t=>t.id),lid,express.id);
 const pred=F.plan(g,{C:M.compile(M.clone(g.net),g.city)});assert.equal(pred[0].avail[0],0);assert.ok(pred[1].avail[0]>0);g.model.solveNow(3);assert.ok(g.model.daily.metro>0);
 console.log('PASS no-train and per-period shutdown, restored service, zero residual demand, express-only prediction and load diagnostics');
 
+// Use the real tutorial rail terminal and a network with three different interchange pairs.
+{
+ const net=M.empty(),type='underground',add=(x,y)=>M.addStation(net,x,y,{size:'M',type},g.city);
+ const terminal=C.Fac.byId('qw_rail'),hub=add(terminal.x,terminal.y),exchange=add(terminal.x,terminal.y+6);
+ const south=add(terminal.x,terminal.y+12),east=add(terminal.x+6,terminal.y+6),west=add(terminal.x-6,terminal.y+6);
+ const a=M.newLine(net),b=M.newLine(net),c=M.newLine(net),d=M.newLine(net);
+ M.addSegment(net,a,hub,exchange,[],type);
+ M.addSegment(net,b,exchange,south,[],type);
+ M.addSegment(net,c,exchange,east,[],type);
+ M.addSegment(net,d,exchange,west,[],'elevated');
+ net.stations[exchange].lv={[d]:'elevated'};
+ net.stations[west].type='elevated';
+ M.normalizeLevels(net);
+ const compiled=M.compile(net,g.city),i=compiled.sIndex.get(exchange);
+ const same=M.xferKind(compiled,i,a,b),cross=M.xferKind(compiled,i,a,c),level=M.xferKind(compiled,i,a,d);
+ assert.equal(same.kind,'same');assert.equal(cross.kind,'cross');assert.equal(level.kind,'level');
+ assert.ok(same.min<cross.min&&cross.min<level.min);
+ const model=new C.Model(g.city);model.setYear(2000);model.setNetwork(compiled);model.syncSolve=true;
+ const measure=()=>{
+   const period=model.makePer(model.net);
+   period.freq.fill(12);period.freqDir.fill(12);
+   const buf={};
+   for(const _ of model.iterate(model.net,period,0,{noSmooth:true,buf})) {}
+   const k=model.fn.ids.indexOf(terminal.id);
+   return {metro:period.fInM[k]+period.fOutM[k],skim:buf.skim};
+ };
+ const enabled=measure(),choice=C.CFG.choice,bias=choice.hubAsc,feed=choice.hubFeed;
+ let disabled;
+ try { choice.hubAsc=0;choice.hubFeed=null;disabled=measure(); }
+ finally { choice.hubAsc=bias;choice.hubFeed=feed; }
+ assert.ok(enabled.metro>disabled.metro,'The rail terminal should attract more riders with hub access enabled');
+ assert.ok(model.net.acc.zFeedS.some((s,z)=>s>=0&&model.net.acc.zCov[z]<1));
+ assert.ok(model.net.exits[i]>=compiled.stations.length);
+ const n=model.net.N,from=compiled.sIndex.get(hub);
+ for(const id of [exchange,south,east,west]) {
+   assert.ok(enabled.skim.km[from*n+compiled.sIndex.get(id)]>0);
+ }
+}
+console.log('PASS tutorial rail hub ridership, all three interchange types and reachable exit paths');
+
 // Old-rule progress is backed up byte-for-byte, without changing assets or past accounts.
-const payload=copy(g.serialize());payload.rulesRevision=10;const body=JSON.stringify(payload),raw=JSON.stringify({format:C.CFG.SAVE_FORMAT,version:2,gameVersion:'2.7.0',savedAt:Date.now(),body,checksum:C.U.fnv(body)}),imp=await C.Save.importText(raw),old=await C.Save.load(imp.slotId);
+const payload=copy(g.serialize());payload.rulesRevision=11;payload.traffic.v=4;
+const body=JSON.stringify(payload),raw=JSON.stringify({format:C.CFG.SAVE_FORMAT,version:2,gameVersion:'2.7.1',savedAt:Date.now(),body,checksum:C.U.fnv(body)}),imp=await C.Save.importText(raw),old=await C.Save.load(imp.slotId);
 assert.ok(old.__backupSlot);assert.equal(JSON.parse(memory.get(C.Save.slotInfo(old.__backupSlot).key)).body,body);
-const restored=C.Game.restore(copy(old));assert.equal(restored.econ.funds,payload.econ.funds);assert.equal(JSON.stringify(restored.net),JSON.stringify(payload.net));assert.equal(JSON.stringify(restored.econ.ledger),JSON.stringify(payload.econ.ledger));
-console.log('PASS exact v2.7 rules-10 backup and preserved network, funds and historical ledger');
+const restored=C.Game.restore(copy(old));assert.equal(restored.econ.funds,payload.econ.funds);assert.equal(JSON.stringify(restored.net),JSON.stringify(payload.net));assert.equal(JSON.stringify(restored.econ.ledger),JSON.stringify(payload.econ.ledger));assert.equal(restored.traffic.v,C.CFG.TRAFFIC_MODEL);
+console.log('PASS exact v2.7.1 backup, traffic rebuild and preserved network, funds and historical ledger');
 
 const byId=C.Fac.byId,facIndex=g.model.facIndex,facStats=g.model.facStats,ready=g.model.trafficReady,verified=g.model.trafficVerified,clock={...g.clock},fare=g.econ.fare;
 try{
@@ -86,7 +127,8 @@ console.log('PASS merged line trends, reset split-line trends and invalidated co
 const D=C.DATA,reclaim=D.reclaim,lockEnclaves=D.lockEnclaves,landmarks=D.landmarks,list=C.Fac.list,active=C.Fac.active;
 try{
  D.reclaim=[{year:2010,poly:[[0,0],[4,0],[4,4],[0,4]],holes:[[[1,1],[2,1],[2,2],[1,2]]]}];assert.equal(g.city.reclaimFeats(false)[0].rings[1].outer,false);
- const small=Object.create(C.City.prototype);Object.assign(small,{W:30,H:30,N:900,regions:[{id:'start',open:2000},{id:'later',open:2010},{id:'empty',open:2000,empty:true}],region:new Uint16Array(900),landFrac:new Float32Array(900)});small.landFrac[62]=small.landFrac[465]=1;small.region[465]=1;D.lockEnclaves=false;assert.equal(small.lockMaskFor([1,0,0])[465],0);D.lockEnclaves=true;assert.equal(small.lockMaskFor([1,0,0])[465],1);small.region[62]=2;assert.equal(small.lockMaskFor([1,0,1])[62],1);
+ const small=Object.create(C.City.prototype);Object.assign(small,{W:30,H:30,N:900,regions:[{id:'start',open:2000},{id:'later',open:2010},{id:'empty',open:null,empty:true}],region:new Uint16Array(900),landFrac:new Float32Array(900)});small.landFrac[62]=small.landFrac[465]=1;small.region[465]=1;D.lockEnclaves=false;assert.equal(small.lockMaskFor([1,0,0])[465],0);D.lockEnclaves=true;assert.equal(small.lockMaskFor([1,0,0])[465],1);small.landFrac[63]=1;small.region[63]=2;assert.equal(small.lockMaskFor([1,0,0])[63],1);
+ small.regions[2].open=2000;assert.equal(small.lockMaskFor([1,0,1])[63],0);
  D.landmarks=[];const fc=Object.create(g.city);fc.regions=[{scenic:true}];fc.region=new Uint16Array(fc.N);fc.landmarkOn=[];
  const R=Object.create(C.Renderer.prototype);R.game={mapId:'tutorial'};const museum={id:'museum',lmK:-1,t:'scenic',name:'自然博物馆',x:5,y:5,r:1};C.Fac.list=()=>[museum,{...museum,id:'park',t:'park'},{...museum,id:'hidden',noModel:true}];C.Fac.active=()=>true;
  let models=R.facModels(fc,2000);assert.equal(models.length,1);assert.equal(models[0].x,5);assert.equal(models[0].y,5);

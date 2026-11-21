@@ -17,6 +17,8 @@ vm.createContext(context);
 const root = new URL('../', import.meta.url);
 for (const src of ['js/util.js', 'js/netlayout.js']) vm.runInContext(await readFile(new URL(src, root), 'utf8'), context, { filename: src });
 const C = context.CM;
+// 上游 2.9.5 的排版要读版心尺寸（CFG.W/H）来定等比缩放的边距；这里只测几何，给一个与广州同量级的版心
+C.CFG = C.CFG || { W: 152, H: 228 };
 assert.ok(C.NetLayout && C.U, 'util.js / netlayout.js 已加载');
 const UNIT = 96;
 const bbox = function (pts) {
@@ -99,8 +101,8 @@ function check(name, built, opts) {
   assert.ok(oct >= 0.95, name + '：严格八方向比例 ≥95%：' + (oct * 100).toFixed(1) + '%');
   assert.ok(worst < 3.2, name + '：未标记拐折的段残差 < 3.2px：' + worst.toFixed(2));
   assert.ok(loose.length <= edges.length * 0.4, name + '：拐折段不超过 40%：' + loose.length + '/' + edges.length);
-  // 标成「需走台阶」的段，画线时不能再选直连（netmap.js octilinearOptions 的 noStraight）
-  assert.ok(pos.bent && typeof pos.bent.has === 'function' && typeof pos.bent.size === 'number', name + '：solve 输出 bent 声明');
+  // 2.9.5 的排版重写后不再输出 bent（拐折改由 via/virt 与 runs 表达）：有就校验类型，没有不算失败
+  if (pos.bent) assert.ok(typeof pos.bent.has === 'function' && typeof pos.bent.size === 'number', name + '：solve 的 bent 声明类型正确');
   for (const k of viaKeys) assert.ok(/^s\d+\|s\d+$/.test(k), name + '：拐点键是车站对：' + k);
   if (opts.perf) assert.ok(ms < 900, name + '：排版耗时 ' + ms.toFixed(0) + 'ms < 900ms');
   return { ms: ms };

@@ -5,7 +5,135 @@ export async function runV27Checks({evaluate:E,send,until,screenshot,delay,task,
  const tap=async sel=>{const p=await E(`(()=>{const e=document.querySelector(${JSON.stringify(sel)});if(!e)throw Error('Missing ${sel}');const r=e.getBoundingClientRect(),x=r.x+r.width/2,y=r.y+r.height/2,n=document.elementFromPoint(x,y);if(!r.width||!e.contains(n))throw Error('Covered ${sel}: '+n?.outerHTML.slice(0,180));return {x,y};})()`);await send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[p]});await send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});await delay(80);};
  const audit=async(label,selector)=>{const r=await E(`(()=>{const out={bad:[],hits:0};for(const e of document.querySelectorAll(${JSON.stringify(selector)})){const s=getComputedStyle(e),r=e.getBoundingClientRect();if(!r.width||!r.height||s.visibility==='hidden'||e.disabled)continue;let a={l:Math.max(0,r.left),t:Math.max(0,r.top),r:Math.min(innerWidth,r.right),b:Math.min(innerHeight,r.bottom)};for(let p=e.parentElement;p;p=p.parentElement){const t=getComputedStyle(p),b=p.getBoundingClientRect();if(/auto|scroll|hidden|clip/.test(t.overflowX)){a.l=Math.max(a.l,b.left);a.r=Math.min(a.r,b.right);}if(/auto|scroll|hidden|clip/.test(t.overflowY)){a.t=Math.max(a.t,b.top);a.b=Math.min(a.b,b.bottom);}}if(a.r-a.l<5||a.b-a.t<5)continue;const n=document.elementFromPoint((a.l+a.r)/2,(a.t+a.b)/2);out.hits++;if(!e.contains(n))out.bad.push({text:e.innerText,by:n?.outerHTML.slice(0,120)});}return out})()`);report.states++;report.hits+=r.hits;if(r.bad.length)throw Error(label+' '+JSON.stringify(r.bad));};
  const close=async()=>{await E('CM.ui.opsApp?.close(null,true);CM.Stats.close();CM.NetMap.close();CM.ui.closeScreen();CM.ui.closePanel(true);true');};
- if(process.env.CM_BORDER_BUILD_ONLY){
+ if (process.env.CM_WALK_LANGUAGE_ONLY) {
+  const {runWalkAndLanguageChecks}=await import('./v27-fix-browser-cases.mjs');
+  await runWalkAndLanguageChecks({E,send,until,close,tap,settle});
+  await fs.writeFile(path.join(task,'report.json'),JSON.stringify(report));return;
+ }
+ if (process.env.CM_NETWORK_DRAWING_ONLY) {
+  const {runNetworkDrawingChecks}=await import("./network-drawing-browser-cases.mjs");
+  await runNetworkDrawingChecks({E,send,until,close,tap,settle});return;
+ }
+ if (process.env.CM_SETTLEMENT_ONLY) {
+  const {runSettlementChecks}=await import('./settlement-browser-cases.mjs');
+  await runSettlementChecks({E,until,fs,path,task,close,tap});return;
+ }
+ if (process.env.CM_MAP_OPENING_ONLY) {
+  await E('CM.Settings.set("language","zh-CN");CM.newGame({map:"sg",mode:"free",seed:19800101});true');
+  await until('!CM.isLoading()&&CM.game?.mapId==="sg"&&!CM.game.pending',180000);
+  await close();
+  const opening = await E(`(()=>{
+    const g=CM.game,c=g.city;
+    g.setSpeed(0);
+    const k=c.regions.findIndex(r=>r.id==="tekong"),state=c.lockState();
+    const p=c.region.findIndex((r,i)=>r===k&&c.landFrac[i]>=0.75&&state.mask[i]&&state.year[i]===2045);
+    if(p<0)throw Error("Could not find land closed until 2045");
+    const x=p%c.W+0.5,y=Math.floor(p/c.W)+0.5;
+    CM.R.flyTo(x,y,24);
+    return {p,x,y};
+  })()`);
+  const search = `(()=>{CM.ui.openSearch();const input=document.querySelector(".search-pop input");input.value="德光岛";input.dispatchEvent(new Event("input",{bubbles:true}));const row=[...document.querySelectorAll(".srch-item")].find(e=>e.textContent.includes("区域"));const text=row?.textContent||"";CM.ui.closeSearch();return text})()`;
+  if (!(await E(search)).includes("2045")) throw Error("Search did not show the scheduled opening");
+  await until('CM.R.sharpReady()&&!CM.R.cam.fly',60000);
+  await E('CM.game.clock.y=2044;CM.game.clock.m=12;CM.ui.jump(1);true');
+  await until('!CM.game.jumping&&!CM.game.pending&&CM.game.clock.y===2045&&CM.game.clock.m===1',180000);
+  await close();
+  if (!await E(`CM.Metro.checkSite(CM.game.city,${opening.x},${opening.y},"underground").ok`)) throw Error("The scheduled area still rejects construction");
+  if (!(await E(search)).includes("已开放")) throw Error("Search did not refresh the open area");
+  await until(`CM.R.sharpReady()&&(!CM.R.tiles?.list||CM.R.tiles.sent.lk?.mask[${opening.p}]===0)`,60000);
+  report.cities.push("sg");
+  await fs.writeFile(path.join(task,"report.json"),JSON.stringify(report));
+  console.log("PASS Singapore monthly settlement, buildability, search and rendered lock refresh");
+  return;
+ }
+ if (process.env.CM_RAIL_SYNC_ONLY) {
+  await E('CM.endGame();CM.ui.showStart();true');
+  await until('document.querySelector("#menubg canvas") && !document.getElementById("menubg").classList.contains("off")');
+  await tap('.start-menu button');
+  await E('CM.newGame({map:"hk",mode:"challenge",seed:198307});true');
+  await until('!CM.isLoading() && CM.game?.mapId === "hk" && !CM.game.pending');
+  await close();
+  await E('CM.game.clock.y=1983; CM.game.clock.m=7; CM.game.econ.funds=1e8; CM.ui.openOpsApp("takeover");true');
+  await until('document.querySelector(".tk-svg [data-stop=hh]") && document.querySelector(".tk-bgc")?.getContext("2d").getImageData(1,1,1,1).data[3] > 0',15000);
+  await tap('.tk-svg [data-stop=hh] .tk-p');
+  await tap('.tk-svg [data-stop=st] .tk-p');
+  await until('document.querySelector(".tk-plan .tk-go button:not(:disabled)")');
+  await audit('rail takeover', '.tk-zctl button,.tk-plan .tk-go button');
+  await tap('.tk-zctl button');
+  await until('document.querySelector(".tk-map").classList.contains("zoomed")');
+  await close();
+  await E('CM.ui.setLayer("bgt");CM.tools.setTool("line");true');
+  await until('document.querySelector(".vnode-toggle")');
+  await tap('.vnode-toggle');
+  if (!await E('CM.tools.pointMode==="virtual" && document.querySelector(".vnode-toggle").getAttribute("aria-pressed")==="true"')) throw Error('Virtual node mode did not activate on touch');
+  await E('CM.tools.setTool("select");CM.ui.openOpsApp("finance");true');
+  await until('Array.from(document.querySelectorAll(".mc-tools button")).some(e=>e.textContent.includes("车站收支"))');
+  const airport = await E(`(()=>{
+   const R=CM.R, list=CM.TERMINALS.hk.hk_cklair;
+   if(!list?.length || !CM.TerminalActive(list[0],2030))return false;
+   const before=new CM.City(), after=new CM.City();
+   before.generate(198307,1995); after.generate(198307,2010);
+   const early=R.hubModels(before,1995).map(x=>x.id), late=R.hubModels(after,2010).map(x=>x.id);
+   return early.includes("hhk_kaitak_kt") && !early.includes("hhk_cklair_t1") && late.includes("hhk_cklair_t1") && !late.includes("hhk_kaitak_kt");
+  })()`);
+  if (!airport) throw Error('Airport terminal phase is not rendered from historical data');
+  console.log('PASS mobile menu, rail selection and zoom, virtual-node control, finance and terminal phases');
+  return;
+ }
+ if(process.env.CM_V272_ONLY){
+  await send('Emulation.setHardwareConcurrencyOverride',{hardwareConcurrency:12});
+  await E('CM.Settings.set("language","zh-CN");CM.newGame({map:"tutorial",mode:"free",seed:20000101});true');
+  await until('!CM.isLoading()&&CM.game?.mapId==="tutorial"');
+  await close();
+  await E(`(async()=>{
+    const {game:g,Metro:M}=CM;
+    g.setSpeed(0);
+    const net=M.empty(),a=M.newLine(net),b=M.newLine(net),stops=[];
+    const add=(x,y)=>M.addStation(net,x,y,{size:'M',type:'underground'},g.city);
+    for(let row=0;row<6;row++)for(let col=0;col<9;col++){
+      stops.push(add(6.5+4*(row%2?8-col:col),3.75+4*row));
+    }
+    for(let i=1;i<stops.length;i++)M.addSegment(net,a,stops[i-1],stops[i],[],'underground');
+    const interchange=stops[3];
+    M.addSegment(net,b,interchange,add(18.5,6),[],'underground');
+    const compiled=M.compile(net,g.city),model=new CM.Model(g.city);
+    model.setYear(g.year());model.setNetwork(compiled);
+    const period=()=>{const p=model.makePer(model.net);p.freq.fill(12);p.freqDir.fill(12);return p;};
+    const local=period(),worker=period(),localBuf={},workerBuf={};
+    model.syncSolve=true;
+    for(const _ of model.iterate(model.net,local,0,{noSmooth:true,buf:localBuf})) {}
+    model.syncSolve=false;
+    for(const _ of model.iterate(model.net,worker,0,{noSmooth:true,buf:workerBuf})){
+      if(_===CM.SIM_WAIT)await new Promise(resolve=>setTimeout(resolve,5));
+    }
+    if(!workerBuf.skim.parts?.length||!CM.OdPool.list?.length||CM.OdPool.off)
+      throw Error('Traffic did not run in both browser workers');
+    for(const [left,right] of [[localBuf.skim.gt,workerBuf.skim.gt],[local.stIn,worker.stIn],[local.stOut,worker.stOut],[local.fInM,worker.fInM],[local.fOutM,worker.fOutM],[local.load,worker.load]]){
+      if(left.length!==right.length||left.some((v,i)=>v!==right[i]))throw Error('Worker traffic differs from the main thread');
+    }
+    CM.Fleet.ensure(g); // Start with an empty fleet so the synthetic lines are physically connected but unserved.
+    g.net=net;g.compiled=compiled;g.netVersion++;
+    g.model.setNetwork(compiled);g.model.applyFleet();g.model.solveNow(1);
+    CM.ui.openPage('station',interchange,{root:true});
+    CM.ui.live.forEach(update=>update());
+    return true;
+  })()`);
+  const detail=await E('CM.ui.rBody.textContent');
+  if(!detail.includes('十字节点换乘')||!detail.includes('本站所有交路均停运'))throw Error('Station detail did not render expected diagnostics: '+detail);
+  console.log('PASS browser worker parity, interchange types and no-train diagnostic');
+  await close();
+  await E('CM.ui.openOpsApp("stations");true');
+  await settle();
+  if(!await E('(()=>{const b=document.querySelector(\'.mc-nav[data-v=fare]\');b.focus();return document.activeElement===b})()'))
+    throw Error('The fare tab could not receive keyboard focus');
+  await send('Input.dispatchKeyEvent',{type:'keyDown',key:'Enter',code:'Enter',text:'\r',unmodifiedText:'\r',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+  await send('Input.dispatchKeyEvent',{type:'keyUp',key:'Enter',code:'Enter',windowsVirtualKeyCode:13,nativeVirtualKeyCode:13});
+  const state=await E('({view:CM.ui.opsApp?.state().root,speed:CM.game.speed})');
+  if(state.view!=='fare'||state.speed!==0)throw Error('Enter did not select fare management: '+JSON.stringify(state));
+  await close();
+  console.log('PASS mobile Metro Core keyboard');
+  await fs.writeFile(path.join(task,'report.json'),JSON.stringify(report));return;
+ } if(process.env.CM_BORDER_BUILD_ONLY){
   for(const map of ['hk','sz']){
    await E(`CM.newGame({map:${JSON.stringify(map)},mode:'free',startYear:2020,seed:20200101});true`);
    await until(`!CM.isLoading()&&CM.game?.mapId===${JSON.stringify(map)}`);
@@ -102,6 +230,9 @@ export async function runV27Checks({evaluate:E,send,until,screenshot,delay,task,
  }
  console.log('PASS three-language mobile fare, city traits and network diagram',report.states);
  await send('Emulation.setDeviceMetricsOverride',{width:1440,height:1000,deviceScaleFactor:1,mobile:false});await E('CM.Settings.set("uiScale",1);CM.Settings.set("language","en");CM.ui.openNetMap();true');await settle();
+ await tap('.nm-mode [data-mode=schematic]');
+ await until('document.querySelector(".nm-mode [data-mode=schematic]").getAttribute("aria-pressed")==="true"&&!!document.querySelector(".nm-svg [data-segment]")');
+ if(await E('document.querySelector(".nm-svg").outerHTML.includes("NaN")'))throw Error('Schematic contains invalid coordinates');
  await delay(500);const downloadDir=path.join(task,'downloads');await fs.mkdir(downloadDir);await send('Browser.setDownloadBehavior',{behavior:'allow',downloadPath:downloadDir});
  await E('window.exportMessages=[];const oldToast=CM.ui.toast;CM.ui.toast=function(...args){exportMessages.push(args);return oldToast.apply(this,args)};true');await tap('.nm-export');await until('!document.querySelector(".nm-export").disabled');
  const checkDownload=async count=>{let files=[];for(let i=0;i<100;i++){files=(await fs.readdir(downloadDir)).filter(x=>x.endsWith('.png'));if(files.length>=count)break;await delay(100);}if(files.length<count)throw Error('PNG download did not complete '+JSON.stringify(await E('exportMessages'))) ;for(const f of files){const b=await fs.readFile(path.join(downloadDir,f));if(b.subarray(1,4).toString()!=='PNG'||b.length<10000)throw Error('Invalid PNG: '+f);}report.downloads=files;};
@@ -152,7 +283,7 @@ export async function runV27Checks({evaluate:E,send,until,screenshot,delay,task,
  await E(`(async()=>{
   const id='tk',stub=CM.MAPS[id].geo,head=document.head,append=head.appendChild;
   if(CM.geoReady(id))throw Error('Tokyo unexpectedly resident');
-  head.appendChild=function(node){if(node.tagName==='SCRIPT'&&node.src.endsWith('/geo_tk.js')){queueMicrotask(()=>node.onerror());return node;}return append.call(this,node);};
+  head.appendChild=function(node){if(node.tagName==='SCRIPT'&&new URL(node.src).pathname.endsWith('/geo_tk.js')){queueMicrotask(()=>node.onerror());return node;}return append.call(this,node);};
   try{const first=CM.loadGeo(id);if(first!==CM.loadGeo(id))throw Error('Duplicate geography request');
    const outcomes=await Promise.allSettled([first]);if(outcomes[0].status!=='rejected')throw Error('Geography failure was ignored');
   }finally{head.appendChild=append;}

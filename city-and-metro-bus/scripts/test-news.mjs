@@ -51,9 +51,9 @@ ok('没有残留上游 2.x 公告内容');
 
 // 已读判断跟随公告版本，而不是 CFG.GAME_VERSION（否则红点永远消不掉）
 const screens = await readFile(new URL('js/screens.js', root), 'utf8');
-assert.ok(/const latestNews = function/.test(screens), 'screens.js 应有 latestNews');
-assert.ok(/newsVer\(latestNews\(\)\)/.test(screens), '已读判断应比较公告最新版本');
+assert.ok(/const newsVersion = function/.test(screens), 'screens.js 应有 newsVersion（2.9.5 起的命名）');
+assert.ok(/newsVersion\(\)/.test(screens) && /NEWS\?\.\[0\]\?\.v/.test(screens), '已读判断应比较公告最新版本');
 assert.ok(!/newsVer\(CFG\.GAME_VERSION\)/.test(screens), '不应再拿 GAME_VERSION 比较公告');
 ok('已读判断跟随公告最新版本（红点可正常消除）');
 
-console.log('\nPASS ' + pass + ' 项：公告为本分支 v3.47→v3.38 的版本记录，顺序、内容与已读判断均正确。');
+console.log('\nPASS ' + pass + ' 项：公告为本分支 3.x 的版本记录（最新一条与 APP_VERSION 一致），顺序、内容与已读判断均正确。');

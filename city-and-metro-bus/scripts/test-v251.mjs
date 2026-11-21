@@ -10,9 +10,15 @@ for(const[,src]of(await readFile(new URL('index.html',root),'utf8')).matchAll(/<
 const C=c.CM,M=C.Metro,copy=x=>JSON.parse(JSON.stringify(x));
 C.UI=function(){};for(const src of ['settings','corp','fleet','screens'])await load('js/'+src+'.js');
 const F=C.Fleet;
-assert.equal(C.CFG.GAME_VERSION,'2.7.1');assert.equal(C.CFG.RULES_REVISION,11);
-assert.equal(C.MAP_ORDER.length,12);assert.equal(F.MODELS.length,56);assert.ok(C.MAPS.ld&&C.Traits);
-memory.set('cm1.newsSeen','2.7.0');assert.equal(C.UI.prototype.newsUnread(),false);
+assert.equal(C.CFG.GAME_VERSION,'2.9.5');assert.ok(C.CFG.RULES_REVISION>=15);
+assert.equal(C.MAP_ORDER.length,15);assert.equal(F.MODELS.length,78);assert.ok(C.MAPS.ld&&C.Traits);
+assert.equal(C.NEWS[0].v,'2.9');
+assert.equal(C.UI.prototype.newsUnread(),true);
+for(const seen of ['2.9','2.9.2','2.9.3','2.9.4','2.9.5']){
+  memory.set('cm1.newsSeen',seen);
+  assert.equal(C.UI.prototype.newsUnread(),false,seen);
+}
+memory.set('cm1.newsSeen','2.8.0');assert.equal(C.UI.prototype.newsUnread(),true);
 memory.set('cm1.newsSeen','2.4.0');assert.equal(C.UI.prototype.newsUnread(),true);
 assert.ok(!C.NEWS.some(n=>n.v==='2.7.1'),'Patch release has no new announcement');
 
@@ -68,10 +74,102 @@ assert.equal(F.confirmAlloc(g,order,fill).stale,true,'A confirmed quote may only
 assert.ok(Math.abs(cash-g.econ.funds-preview)<1e-5);assert.equal(F.allocPlan(g).unmet,0);
 F.setMode(g,line,'manual');assert.equal(F.allocPlan(g).needs.length,0);F.setMode(g,line,'auto');
 g.fleet.autoAlloc=true;const fleetRoundTrip=C.Game.restore(copy(g.serialize()));assert.equal(fleetRoundTrip.fleet.autoAlloc,true);assert.equal(fleetRoundTrip.econ.funds,g.econ.funds);
+const allocationOnly=copy(g.serialize());
+delete allocationOnly.fleet.autoBuy;
+const legacyAllocation=C.Game.restore(allocationOnly);
+assert.equal(legacyAllocation.fleet.autoAlloc,true);
+const realAlloc=F.allocPlan,realAutoBuy=F.autoBuy;
+let autoBuyCalls=0;
+try {
+  legacyAllocation.model.trafficReady=()=>true;
+  F.allocPlan=()=>({moved:0,unmet:2});
+  F.autoBuy=()=>{autoBuyCalls++;return {n:0};};
+  F.monthly(legacyAllocation);
+  assert.equal(autoBuyCalls,0,'An existing auto-allocation preference alone does not authorize purchases');
+  legacyAllocation.fleet.autoBuy=true;
+  F.monthly(legacyAllocation);
+  assert.equal(autoBuyCalls,1);
+} finally {
+  F.allocPlan=realAlloc;
+  F.autoBuy=realAutoBuy;
+}
 console.log('PASS idle allocation, platform/speed/manual exclusions, previewed purchase cost and saved fleet preference');
 
+// A new game defaults to auto-buy. Missing rolling stock must not abort the
+// first monthly settlement or prevent the grant from being posted.
+C.useMap('tutorial');
+await load('js/icons.js');
+await load('js/pages.js');
+let late = C.Game.create({mode:'challenge',tutorial:true,seed:20000101});
+late.econ.funds += 1e7;
+late.econ.cur.start += 1e7;
+F.ensure(late);
+const lateNet = M.clone(sample.net);
+lateNet.lines[sample.line].speed = 80;
+late.edit(net => Object.assign(net, lateNet));
+assert.equal(late.confirmDraft().ok, true);
+late.fleet.trains = [];
+F.changed(late);
+late.model.solveNow(2);
+assert.ok(late.fleet.autoAlloc && late.fleet.autoBuy);
+const shortage = F.allocPlan(late);
+assert.ok(shortage.unmet > 0, 'Fixture must trigger automated purchasing');
+const { funds: savedFunds, capex: savedCapex } = late.econ;
+late.econ.funds = late.econ.capex = 0;
+const limited = F.autoBuy(late, shortage);
+assert.ok(limited.limited && !limited.n && !late.fleet.trains.length);
+Object.assign(late.econ, { funds: savedFunds, capex: savedCapex });
+const target = (months) => {
+  const ym = late.ym(), closed = late.econ.ledger.length;
+  const moneyBefore = late.econ.funds, countBefore = late.fleet.trains.length;
+  assert.ok(late.startJump(months));
+  while (late.jumping) late.stepJump();
+  assert.ok(!late.settlementError, late.settlementError?.stack);
+  assert.equal(late.ym() - ym, months);
+  const rows = late.econ.ledger.slice(closed);
+  assert.equal(rows.length, months);
+  for (const row of rows) {
+    assert.ok(row.grant > 0);
+    assert.equal(row.days, C.U.daysInMonth(row.y, row.m));
+    const built = C.Economy.BUILD_KINDS.reduce((sum, key) => sum + row[key], 0);
+    const expected = row.start + C.Economy.incomeOf(row) - built - C.Economy.opsOf(row) - row.pppOut -
+      row.interest - row.principal - row.penalty + row.capexUse;
+    assert.ok(Math.abs(row.end - expected) < 1e-7, 'Monthly funds must reconcile with the ledger');
+  }
+  assert.ok(late.econ.cur.grant > 0, 'Grant for the newly opened month must already be booked');
+  if (months === 3) {
+    assert.ok(late.fleet.trains.length > countBefore);
+    assert.ok(rows.some(row => row.construction > 0));
+    assert.ok(late.econ.funds !== moneyBefore);
+  }
+};
+target(3);
+const paid = copy(late.serialize());
+const missed = copy(paid);
+missed.econ.cur.grant = 0;
+delete missed.econ.cur.opsSub;
+missed.econ.funds -= paid.econ.cur.grant;
+missed.econ.flow = missed.econ.flow.filter(row => row.kind !== 'grant' || row.y !== missed.clock.y || row.m !== missed.clock.m);
+late = C.Game.restore(missed);
+assert.ok(Math.abs(late.econ.funds - paid.econ.funds) < 1e-7);
+assert.equal(late.econ.cur.grant, paid.econ.cur.grant);
+assert.equal(JSON.stringify(late.econ.ledger), JSON.stringify(paid.econ.ledger));
+const reload = C.Game.restore(copy(late.serialize()));
+assert.equal(reload.econ.funds, late.econ.funds);
+assert.equal(reload.econ.cur.grant, late.econ.cur.grant);
+late = reload;
+target(12);
+const oldest = late.fleet.trains[0];
+oldest.bought = late.ym() - (F.model(oldest.model).life + 1) * 12;
+const sale = F.sellOld(late);
+assert.equal(sale.n, 1);
+assert.equal(F.oldIds(late).length, 0);
+assert.equal(late.econ.cur.fleetSale, sale.value);
+console.log('PASS auto-buy with a genuine shortage, quarter and year advancement, grant recovery, and old-train sale');
+
+
 // v2.5.0 originals get an exact backup; historical fare, accounts, assets and task data survive the upgrade.
-const old=copy(g.serialize());old.rulesRevision=6;delete old.econ.fareMark;delete old.econ.fareAuto;delete old.econ.fareNote;delete old.fleet.autoAlloc;
+const old=copy(g.serialize());old.rulesRevision=6;delete old.econ.fareMark;delete old.econ.fareAuto;delete old.econ.fareNote;delete old.fleet.autoAlloc;delete old.fleet.autoBuy;
 const oldBody=JSON.stringify(old),oldRaw=JSON.stringify({format:C.CFG.SAVE_FORMAT,version:2,gameVersion:'2.5.0',savedAt:Date.now(),body:oldBody,checksum:C.U.fnv(oldBody)});
 const imported=await C.Save.importText(oldRaw),payload=await C.Save.load(imported.slotId);assert.ok(payload.__backupSlot);
 assert.equal(JSON.parse(memory.get(C.Save.slotInfo(payload.__backupSlot).key)).body,oldBody);
@@ -113,7 +211,7 @@ for(const id of ['wh','bj','tk']){
  const list=C.Fac.list(city);
  for(const f of list.filter(f=>f.gen)){assert.ok(!city.regions[f.gen.k].hub);assert.notEqual(city.regions[f.gen.k].open,null);assert.ok(city.landMax[city.cellAt(f.x,f.y)]>=.5);}
  if(id==='wh'){const model=new C.Model(city,{deferDemand:true});model.setYear(2024);model.buildZones();assert.equal(model.fn.reach.length,model.fn.F);assert.ok(model.fn.reach.every(d=>d>=0&&d<=1000));assert.ok(list.some(f=>f.name.includes('蔡甸')&&f.gen));}
- if(id==='bj'){await load('js/render.js');await load('js/scenery.js');const ctx=new Proxy({},{get:(o,k)=>o[k]||(()=>{})}),R=new C.Renderer({getContext:()=>ctx});assert.ok(R.hubModels(city,2024).some(x=>x.id==='hbj_pek'));}
+ if(id==='bj'){await load('js/render.js');await load('js/scenery.js');const ctx=new Proxy({},{get:(o,k)=>o[k]||(()=>{})}),R=new C.Renderer({getContext:()=>ctx});assert.ok(R.hubModels(city,2024).some(x=>x.lm.kind==='terminal'&&x.id.startsWith('hbj_pek_')));}
  if(id==='tk'){const f=list.find(f=>f.id==='tk_narita');assert.ok(f?.ext);assert.equal(C.Fac.active(f,1978+3/12,city),false);assert.equal(C.Fac.active(f,1978+4/12,city),true);const p=C.Fac.portal(f);assert.ok(p.x>=0&&p.x<city.W&&p.y>=0&&p.y<city.H);}
 }
 console.log('PASS road-aware district facilities, airport exclusions, Beijing terminal and Narita opening month');

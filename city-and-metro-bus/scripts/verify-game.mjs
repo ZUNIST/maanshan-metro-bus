@@ -8,6 +8,13 @@ import { geoIndex } from './geo-index.mjs';
 
 export const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export const gameEntries = ['index.html', 'css', 'img', 'js', 'LICENSE.txt', 'THIRD_PARTY_NOTICES.txt', 'licenses'];
+const documentationAssets = new Set([
+  'img/screenshot-map-selection.png',
+  'img/screenshot-tokyo-day.png',
+  'img/screenshot-guangzhou-night.png',
+  'img/screenshot-economy-statistics.png',
+]);
+export const isDocumentationAsset = (root, file) => documentationAssets.has(path.relative(root, file).split(path.sep).join('/'));
 const manifestName = 'game-manifest.json';
 const digest = bytes => createHash('sha256').update(bytes).digest('hex');
 
@@ -30,7 +37,11 @@ export async function inspectGame(root = projectRoot) {
       return;
     }
     if (!info.isFile()) throw new Error('资源不是普通文件：' + file);
-    const rel = path.relative(root, file).replaceAll('\\', '/');
+    const rel = path.relative(root, file).split(path.sep).join('/');
+    if (isDocumentationAsset(root, file)) {
+      if (root !== projectRoot) throw new Error('发布资源包含 README 截图：' + rel);
+      return;
+    }
     if (rel.split('/').some(p => p.startsWith('.')) || /\.md$/i.test(rel)) throw new Error('发布资源包含开发文件：' + rel);
     if (info.size > 25 * 1024 * 1024) throw new Error('单个资源超过25 MiB：' + rel);
     const bytes = await readFile(file);
@@ -89,9 +100,9 @@ export async function inspectGame(root = projectRoot) {
   if (!loaded || !CM?.MAP_ORDER?.length) throw new Error('地图登记未加载');
   const releaseLine = v => String(v || '').split('.').slice(0, 2).join('.');
   const appVer = CM.CFG.APP_VERSION || CM.CFG.GAME_VERSION;   // 分支版本；上游 GAME_VERSION 仍管存档迁移
+  if (!Array.isArray(CM.NEWS) || CM.NEWS.some(n => !/^\d+\.\d+$/.test(n.v))) throw new Error('更新公告只接受主、次版本号');
   if (releaseLine(appVer) !== releaseLine(CM.NEWS?.[0]?.v)) throw new Error('应用版本与最新更新公告的主、次版本不一致（APP_VERSION=' + appVer + '，公告=' + (CM.NEWS?.[0]?.v) + '）');
-  if (!Array.isArray(CM.NEWS) || CM.NEWS.some(n => !Array.isArray(n.items) || n.items.length < 2 || n.items.length > 6 || n.items.some(t => typeof t !== 'string' || !t.trim()))) throw new Error('每版更新公告必须有 2–6 条非空玩家摘要');
-  for (const file of ['LICENSE.txt', 'THIRD_PARTY_NOTICES.txt']) {
+  if (!Array.isArray(CM.NEWS) || CM.NEWS.some(n => !Array.isArray(n.items) || n.items.length < 2 || n.items.length > 6 || n.items.some(t => typeof t !== 'string' || !t.trim()))) throw new Error('每版更新公告必须有 2–6 条非空玩家摘要');  for (const file of ['LICENSE.txt', 'THIRD_PARTY_NOTICES.txt']) {
     if (String(CM.LEGAL?.[file]).replace(/\r\n/g, '\n') !== files.get(path.join(root, file)).bytes.toString().replace(/\r\n/g, '\n')) throw new Error('游戏内许可副本过期：' + file);
   }
   const maps = CM.MAP_ORDER.map(id => {

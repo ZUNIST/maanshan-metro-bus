@@ -29,7 +29,7 @@ ok('跨水补线被拦截（不会凭空多出一座桥）');
 
 // ④ 支路整条判定
 assert.ok(/let any = false;/.test(src) && /if \(!any\) continue;/.test(src), '支路应先判整条是否沾到建成区');
-assert.ok(/for \(let q = 0; q \+ 3 < p\.length; q \+= 2\) \{ st\.moveTo/.test(src), '命中后整条绘制');
+assert.ok(/if \(!any\) continue;[\s\S]{0,400}?st\.moveTo\(p\[q\]/.test(src), '命中后整条绘制（且按水面裁剪后逐段画）');
 ok('支路改为「沾到已开发街区就整条画」，不再逐段切碎');
 
 // ⑤ 焊接线按等级用对应路面颜色绘制

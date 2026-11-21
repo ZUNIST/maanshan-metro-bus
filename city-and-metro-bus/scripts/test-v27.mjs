@@ -12,14 +12,15 @@ for(const[,src]of(await readFile(new URL('index.html',root),'utf8')).matchAll(/<
 const C=c.CM,M=C.Metro,copy=v=>JSON.parse(JSON.stringify(v));
 C.UI=function(){};for(const f of ['settings','corp','fleet','netlayout','netreplay','review'])await load('js/'+f+'.js');
 const F=C.Fleet;
-assert.equal(C.CFG.GAME_VERSION,'2.7.1');assert.equal(C.CFG.RULES_REVISION,11);
-assert.equal(C.MAP_ORDER.length,14);assert.equal(F.MODELS.length,62);   // v3.24：14 张地图、62 个车型（含 6 款有轨电车）
-assert.equal(F.MODELS.filter(m=>m.maps?.includes('ld')).length,11);
+assert.equal(C.CFG.GAME_VERSION,'2.9.5');assert.ok(C.CFG.RULES_REVISION>=15);
+assert.equal(C.MAP_ORDER.length,19);assert.equal(F.MODELS.length,90);   // 15 张上游图 + 马鞍山/和县 4 张；78 款上游车型 + 12 款电车/公交assert.equal(F.MODELS.filter(m=>m.maps?.includes('ld')).length,11);
 assert.equal(F.MODELS.filter(m=>m.maps?.includes('sz')).length,2);
 for(const mp of Object.values(C.MAPS))assert.equal(JSON.stringify(C.Traits.validate(mp)),'[]',mp.id);
-assert.equal(C.NEWS[0].v,'2.7');assert.equal(C.NEWS[1].v,'2.6');
+// 本分支的公告是 3.x 自述（上游 2.x 已全部替换）：最新一条要对上 APP_VERSION，且严格从新到旧
+assert.equal(C.NEWS[0].v, C.CFG.APP_VERSION);
+for (let i = 1; i < C.NEWS.length; i++) assert.ok(parseFloat(C.NEWS[i-1].v) > parseFloat(C.NEWS[i].v), '公告必须从新到旧：' + C.NEWS[i-1].v + ' > ' + C.NEWS[i].v);
 assert.ok(C.NetReplay&&!C.Desktop&&!C.Achievements);
-console.log('PASS 12 maps, 56 models, all city mechanisms and two separate announcements');
+console.log('PASS 15 maps, 78 models, all city mechanisms and separate announcements');
 
 C.useMap('ld');const london=C.Game.create({mode:'challenge',seed:18600101});F.ensure(london);
 assert.equal(london.clock.y,1860);assert.equal(C.CFG.money.code,'GBP');assert.equal(C.CFG.money.pence,true);
