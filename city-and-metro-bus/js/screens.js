@@ -9,10 +9,13 @@
 
   // 公告是否已读（本机记录；无法访问本地存储时视为已读，不打扰）
   const NEWS_KEY = 'cm1.newsSeen';
-  // 按大小版本比较：修订版（如 2.6.1）没有新公告，不提示
+  // 按大小版本比较：修订版没有新公告，不提示
   const newsVer = function (v) { return String(v || '').split('.').slice(0, 2).join('.'); };
-  const newsSeen = function () { try { return newsVer(localStorage.getItem(NEWS_KEY)) === newsVer(CFG.GAME_VERSION); } catch (e) { return true; } };
-  const markNews = function () { try { localStorage.setItem(NEWS_KEY, CFG.GAME_VERSION); } catch (e) { /* ignore */ } };
+  // 公告的「当前版本」以公告列表第一条为准（本分支是 3.x，不再跟上游 2.7.x 走），
+  // 否则 GAME_VERSION 永远是 2.7.1，红点会一直亮着消不掉。
+  const latestNews = function () { const n = (CM.NEWS || [])[0]; return n && n.v ? n.v : (CFG.APP_VERSION || CFG.GAME_VERSION); };
+  const newsSeen = function () { try { return newsVer(localStorage.getItem(NEWS_KEY)) === newsVer(latestNews()); } catch (e) { return true; } };
+  const markNews = function () { try { localStorage.setItem(NEWS_KEY, latestNews()); } catch (e) { /* ignore */ } };
   UI.prototype.newsUnread = function () { return !newsSeen(); };
 
   // 难度：点 + 文字
@@ -111,7 +114,7 @@
         // v3.24：主菜单直接标出这是「有轨电车版」，一眼能确认打开的是哪个版本
         h('b', { class: 'start-edition', style: { color: 'var(--accent)' } }, '有轨电车版 v3.26.1'), '　', h('br'),
         h('a', { href: 'LICENSE.txt', target: '_blank', rel: 'noopener' }, '© 2026 VinsonFung · 仅限非商业使用'), h('br'),
-        h('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener' }, '地图 © OpenStreetMap 贡献者 · ODbL'), ' · v' + CFG.GAME_VERSION));
+        h('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener' }, '地图 © OpenStreetMap 贡献者 · ODbL'), ' · v' + (CFG.APP_VERSION || CFG.GAME_VERSION)));
     // 右上角：公告、官方社区和主题共用按钮样式；外链保留当前游戏页面。
     const news = h('button', { class: 'corner-btn' + (newsSeen() ? '' : ' dot'), 'data-tip': '更新公告', 'aria-label': '更新公告', onclick: function () { self.showNews(function () { self.showStart(); }); } }, ic('megaphone'));
     const social = function (icon, label, href) {
@@ -442,7 +445,7 @@
       list.appendChild(sec);
     });
     const card = h('div', { class: 'card news' },
-      h('div', { class: 'card-head' }, h('span', { class: 'badge b-violet' }, ic('megaphone')), h('div', { class: 'grow' }, h('h2', null, '更新公告'), h('div', { class: 'tiny muted' }, '当前版本 V' + ((CM.NEWS || [])[0]?.v || CFG.GAME_VERSION))),
+      h('div', { class: 'card-head' }, h('span', { class: 'badge b-violet' }, ic('megaphone')), h('div', { class: 'grow' }, h('h2', null, '更新公告'), h('div', { class: 'tiny muted' }, '当前版本 V' + ((CM.NEWS || [])[0]?.v || CFG.APP_VERSION || CFG.GAME_VERSION))),
         h('button', { class: 'iconbtn', 'data-tip': '关闭', 'data-key': 'Esc', onclick: close }, ic('close'))),
       list);
     this.openScreen(card, close);

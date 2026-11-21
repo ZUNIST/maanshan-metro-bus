@@ -2691,7 +2691,7 @@
         const osm = h('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener' }, 'openstreetmap.org/copyright');
         return [h('div', { class: 'about-head' },
             h('img', { class: 'logo-ink', src: 'img/logo-navy.png', alt: '' }),
-            h('div', null, h('div', { class: 'about-name' }, '城市与地铁'), h('div', { class: 'muted' }, '版本 v' + CFG.GAME_VERSION + ' · 网页版'))),
+            h('div', null, h('div', { class: 'about-name' }, '城市与地铁'), h('div', { class: 'muted' }, '版本 v' + (CFG.APP_VERSION || CFG.GAME_VERSION) + ' · 网页版'))),
           group('版权与许可'),
           row('shield', '使用许可', doc('使用许可', 'LICENSE.txt'), '© 2026 VinsonFung，保留所有权利'),
           row('book', '第三方声明', doc('第三方声明', 'THIRD_PARTY_NOTICES.txt'), '游戏使用的开源组件与数据的许可说明'),
