@@ -4492,7 +4492,6 @@ centers: [
       Object.assign(atW(31.6860, 118.5075), { id: 'ms_ahut', name: '安徽工业大学（佳山校区）', w: 760, d: 620, year: 1958, kind: 'campus' }),
       Object.assign(atW(31.6710, 118.5500), { id: 'ms_ahut3', name: '安工大秀山校区', w: 700, d: 560, year: 2010, kind: 'campus' }),
       Object.assign(atW(31.6932, 118.4968), { id: 'ms_yushan', name: '雨山湖', w: 620, d: 420, year: 1950, kind: 'park' }),
-      Object.assign(atW(31.6980, 118.5020), { id: 'ms_stadium', name: '马鞍山市体育中心', w: 320, d: 260, year: 2004, kind: 'stadium' }),
       Object.assign(atW(31.6646, 118.5009), { id: 'ms_museum', name: '马鞍山市博物馆', w: 160, d: 140, year: 2008, kind: 'expo' }),
       Object.assign(atW(31.5636, 118.4880), { id: 'ms_dt', name: '太平府古城', w: 500, d: 400, year: 1600, kind: 'traditional', style: 'palace' }),
       Object.assign(atW(31.4920, 118.5180), { id: 'ms_libai', name: '李白墓（青山）', w: 200, d: 200, year: 817, kind: 'temple' }),
@@ -4525,10 +4524,10 @@ centers: [
       { id: 'ms_hosp2', n: '马鞍山十七冶医院', t: 'hosp', at: llW(31.6900, 118.4880), w: 0.03 },
       // 当涂县人民医院：高德 GCJ-02 真值 31.561747,118.512339（太平府北路288号），旧值偏西约 1.7 km
       { id: 'ms_hosp3', n: '当涂县人民医院', t: 'hosp', at: ll(31.561747, 118.512339), w: 0.02 },
-      { id: 'ms_shop1', n: '解放路商圈', t: 'shop', at: ll(31.7014, 118.5062), w: 0.05 },   // v3.48：GCJ-02 值误用 llW（当 WGS 直投）会整体偏东北约 0.6 km，改回 ll 换算
+      { id: 'ms_shop1', n: '团结广场商圈', t: 'shop', at: [263.3, 168.7], w: 0.05 },   // v3.49：团结广场（POI「团结广场北/东」定心）
       // 大华广场（大华·嘉年华商圈）：高德 GCJ-02 真值 31.683553,118.509158，旧值偏北约 1.3 km
-      { id: 'ms_shop2', n: '大华广场', t: 'shop', at: ll(31.683553, 118.509158), y0: 2005, w: 0.03 },
-      { id: 'ms_shop3', n: '万达广场', t: 'shop', at: ll(31.6590, 118.5063), y0: 2014, w: 0.03 },
+      { id: 'ms_shop2', n: '雨山东路大润发', t: 'shop', at: [267.0, 173.6], y0: 2005, w: 0.03 },   // v3.49：雨山东路大润发（原大华广场，玩家反馈市区商业中心不在解放路）
+      { id: 'ms_shop3', n: '雨山万达广场', t: 'shop', at: [260.83, 179.93], y0: 2014, w: 0.03 },   // v3.49：按 POI「万达广场」定位
       { id: 'ms_shop4', n: '当涂姑孰商圈', t: 'shop', at: ll(31.5658, 118.4983), w: 0.015 },
       { id: 'ms_cbd', n: '秀山新区商务区', t: 'cbd', at: ll(31.6940, 118.5600), y0: 2012, w: [[2012, 0.004], [2025, 0.018]] },
       { id: 'ms_zpgcbd', n: '郑蒲港现代产业园', t: 'cbd', at: ll(31.6300, 118.3320), y0: 2014, w: [[2014, 0.002], [2026, 0.012]] },
@@ -4539,10 +4538,10 @@ centers: [
       { id: 'ms_lingjia', n: '凌家滩遗址', t: 'scenic', lm: 'ms_lingjiatan', w: 0.008 },
       { id: 'ms_bawang', n: '霸王祠', t: 'scenic', lm: 'ms_bawang', w: 0.006 },
       { id: 'ms_yushanpark', n: '雨山湖公园', t: 'park', at: ll(31.6930, 118.4965), w: 0.02 },
-      { id: 'ms_stadium', n: '马鞍山市体育中心', t: 'stadium', lm: 'ms_stadium', w: 0.008 },
       { id: 'ms_museum', n: '马鞍山市博物馆', t: 'venue', lm: 'ms_museum', w: 0.005 },
       // v2.9：补充县城与市区的商业区、公园与景点（位置取自镇域内建成区重心，年份为史实或估算）
       { id: 'ms_hs_shop', n: '含山环峰商贸城', t: 'shop', at: [105.0, 152.0], y0: 2005, w: 0.018 },
+      { id: 'ms_hs_shop2', n: '玉龙湖广场', t: 'shop', at: [103.56, 149.51], y0: 2012, w: 0.02 },   // v3.49：含山玉龙广场（POI）
       { id: 'ms_hs_park', n: '玉龙公园', t: 'park', at: [102.0, 151.0], w: 0.006 },
       { id: 'ms_hx_shop', n: '历阳步行街', t: 'shop', at: [207.0, 156.0], w: 0.018 },
       { id: 'ms_hx_park', n: '陋室公园', t: 'park', lm: 'ms_loushi', w: 0.006 },

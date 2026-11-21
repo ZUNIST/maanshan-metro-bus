@@ -312,7 +312,7 @@
   lm('hx_zhq', '镇淮楼', 161.4, 147.2, { w: 90, d: 70, year: 1130, kind: 'traditional', style: 'gate' });
   lm('hx_xls', '西梁山（天门山）', 151.4, 243.4, { w: 260, d: 200, year: 1600, kind: 'park' });
   lm('hx_banyue', '半月湖', 95.6, 105.4, { w: 320, d: 240, year: 1958, kind: 'park' });
-  lm('hx_stadium', '和县体育中心', 150.8, 138.7, { w: 220, d: 180, year: 2012, kind: 'stadium' });
+  lm('hx_stadium', '和县体育中心', 150.8, 138.7, { w: 130, d: 105, year: 2012, kind: 'stadium' });
   lm('hx_wt', '皖江工学院（郑蒲港校区）', 145.5, 192.0, { w: 620, d: 480, year: 2015, kind: 'campus' });
   // 郑蒲港综合保税区（v3.35）：原先是 700×500 m 的 kind:'factory' 地标，被「受保护建筑」规则拦住轨道。
   // 按用户要求它应当是一个通勤点——已移到下面的 facilities，类型 ind（产业园区），
@@ -374,6 +374,7 @@
     { id: 'hx_bawang', n: '霸王祠', t: 'scenic', at: [199.0, 87.4], w: 0.006 },
     { id: 'hx_loushi', n: '陋室公园', t: 'park', at: [160.0, 146.0], w: 0.006 },
     { id: 'hx_zhq', n: '镇淮楼', t: 'scenic', at: [161.4, 147.2], w: 0.004 },
+    { id: 'hx_zhq_shop', n: '镇淮楼商圈', t: 'shop', at: [161.4, 147.2], w: 0.02 },   // v3.49：镇淮街—镇淮楼一带的商业中心
     { id: 'hx_xq', n: '香泉温泉', t: 'scenic', at: [145.3, 77.3], w: 0.005 },
     { id: 'hx_jls', n: '鸡笼山凤林禅寺', t: 'scenic', at: [98.5, 109.5], w: 0.004 },
     { id: 'hx_baochans', n: '褒禅山华阳洞', t: 'scenic', lm: 'hx_baochansi', w: 0.012, y0: 1985,
@@ -381,7 +382,7 @@
     { id: 'hx_xls', n: '西梁山（天门山）', t: 'scenic', at: [151.4, 243.4], w: 0.005 },
     { id: 'hx_caishi', n: '采石矶', t: 'scenic', at: [195.5, 177.0], w: 0.020 },
     { id: 'hx_banyue', n: '半月湖', t: 'park', at: [95.6, 105.4], w: 0.005 },
-    { id: 'hx_stadium', n: '和县体育中心', t: 'stadium', at: [150.8, 138.7], w: 0.006 },
+    { id: 'hx_stadium', n: '和县体育中心', t: 'stadium', at: [150.8, 138.7], w: 0.004 },
     { id: 'hx_museum', n: '和县博物馆', t: 'venue', at: [155.4, 133.1], w: 0.004 },
   ];
   // 地标与设施同 id 联动：景区类设施没有单独的位置时用同名地标的位置（与 data_ms.js 的 lm 字段同义）
@@ -653,6 +654,8 @@
   (CM.MAP_LIST = CM.MAP_LIST || []).push({
     id: 'hx',
     name: '和县',
+    city: '和县',
+    saveName: '和县',
     title: '和县 · 2000',
     sub: '真实地理 · 2000 年起 · 人民币',
     desc: '从 2000 年的和县开始：属巢湖市的农业县，县城历阳只有 6 万人，长江上没有桥，乌江以东就是南京浦口，沈巷还留在芜湖。'

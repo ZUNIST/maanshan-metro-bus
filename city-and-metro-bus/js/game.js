@@ -32,7 +32,8 @@
     try {
       g.id = U.uid('g');
       g.mapId = CM.mapId || 'gz';   // 当前地图（CM.useMap 已切换好数据）
-      g.name = opts.name || ((D.city || '广州') + ' ' + CFG.START.y);
+      // v3.49：地图可用 saveName 指定存档默认名（和县 → 「和县」，不再拼年份）
+      g.name = opts.name || (D.saveName ? D.saveName : ((D.city || '广州') + ' ' + CFG.START.y));
       g.mode = opts.mode;
       g.seed = opts.seed || (CFG.START.y * 10000 + 101);
       if (opts.tutorial) g.tutorial = { step: 0, done: [], started: Date.now() };

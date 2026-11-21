@@ -1199,7 +1199,21 @@
     img.onload = function () { try {
       const sc = Math.min(2, 7000 / Math.max(W, H)), M0 = 48 * sc;
       const lines = M.sortIds(Object.keys(net.lines)).map(function (lid) { return { id: lid, L: net.lines[lid], tp: M.lineTopo(net, lid) }; }).filter(function (o) { return o.tp.topo !== 'empty'; });
-      const cw = Math.max(W * sc + 2 * M0, 960 * sc), cols = Math.max(1, Math.floor((cw - 2 * M0) / (220 * sc)));
+      const cw = Math.max(W * sc + 2 * M0, 960 * sc), KM = lineKm(g);
+      // 图例列宽按内容实测（v3.49）：简称徽标变长后固定 220 会让“N 站 · X km”压到下一列。
+      const mctx = document.createElement('canvas').getContext('2d');
+      let needW = 0;
+      for (const o of lines) {
+        mctx.font = '800 ' + (12 * sc) + 'px ' + font;
+        const bw = Math.max(30 * sc, mctx.measureText(M.lineBadge(o.L)).width + 14 * sc);
+        mctx.font = '600 ' + (14 * sc) + 'px ' + font;
+        const nw = mctx.measureText(o.L.name).width;
+        mctx.font = (12 * sc) + 'px ' + font;
+        const sw = mctx.measureText(o.tp.stations.length + ' 站 · ' + kmText(KM.get(o.id))).width;
+        needW = Math.max(needW, bw + 10 * sc + nw + 18 * sc + sw);
+      }
+      const colW = Math.max(220 * sc, needW + 36 * sc);
+      const cols = Math.max(1, Math.floor((cw - 2 * M0) / colW));
       const headH = 108 * sc, footH = (Math.ceil(lines.length / cols) * 34 + 92) * sc;
       const ch = headH + H * sc + footH;
       const cv = document.createElement('canvas'); cv.width = Math.round(cw); cv.height = Math.round(ch);
@@ -1212,7 +1226,6 @@
       c.font = '800 ' + (30 * sc) + 'px ' + font; c.fillText((D.city || '') + (isGeo ? '地铁地理线网图' : '地铁线路示意图'), M0, 56 * sc);
       c.font = (15 * sc) + 'px ' + font; c.fillStyle = P.sub;
       let nSt = 0; for (const id in net.stations) if (M.stationLines(net, id).length) nSt++;
-      const KM = lineKm(g);
       c.fillText('游戏时间 ' + g.clock.y + ' 年 ' + g.clock.m + ' 月' + (useDraft ? '（含建设草案）' : '') + ' · ' + lines.length + ' 条线路 · ' + nSt + ' 座车站 · 线路总长 ' + kmText(KM.total) + ' · 《城市与地铁》', M0, 84 * sc);
       c.drawImage(img, (cw - W * sc) / 2, headH, W * sc, H * sc);
       // 线路图例
@@ -1220,7 +1233,7 @@
       c.strokeStyle = P.rule; c.lineWidth = 1 * sc; c.beginPath(); c.moveTo(M0, y); c.lineTo(cw - M0, y); c.stroke();
       y += 30 * sc;
       lines.forEach(function (o, k) {
-        const x = M0 + (k % cols) * 220 * sc, yy = y + Math.floor(k / cols) * 34 * sc;
+        const x = M0 + (k % cols) * colW, yy = y + Math.floor(k / cols) * 34 * sc;
         // 徽标宽度按简称实测（v3.48）：以前写死 30px，「和含公交1」这类 5 字简称会被裁掉。
         const badgeTxt = M.lineBadge(o.L);
         c.font = '800 ' + (12 * sc) + 'px ' + font;
