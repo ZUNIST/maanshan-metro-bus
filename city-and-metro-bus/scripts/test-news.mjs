@@ -11,6 +11,11 @@ ctx.CM = {};   // news.js 只往 window.CM 上挂数据
 vm.createContext(ctx);
 vm.runInContext(await readFile(new URL('js/news.js', root), 'utf8'), ctx, { filename: 'news.js' });
 const NEWS = ctx.CM.NEWS;
+const APP_CFG = await readFile(new URL('js/config.js', root), 'utf8');
+const CFG_APP_VER = (function () {
+  const m = /APP_VERSION:\s*'([^']+)'/.exec(APP_CFG);
+  return m ? m[1] : NEWS[0].v;
+})();
 let pass = 0;
 const ok = (m) => { console.log('  ok  ' + m); pass++; };
 
@@ -19,7 +24,7 @@ ok('公告条数 ' + NEWS.length);
 
 // 版本号必须是 3.x，不能回退到上游 2.x
 for (const n of NEWS) assert.ok(/^3\.\d+$/.test(n.v), '版本号必须是 3.x，实际 ' + n.v);
-assert.equal(NEWS[0].v, '3.47', '最新一条应是 3.47');
+assert.equal(NEWS[0].v, CFG_APP_VER, '最新一条应与 APP_VERSION 一致');
 ok('全部为 3.x，最新一条 V' + NEWS[0].v);
 
 // 从新到旧严格递减

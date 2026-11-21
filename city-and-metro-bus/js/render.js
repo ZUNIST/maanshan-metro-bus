@@ -939,9 +939,75 @@
           if (d > 0.02 && d < bqd) { bqd = d; bq = [qx, qy]; }
         }
       }
-      if (bq) add(e.x, e.y, bq[0], bq[1], e.w);
+      if (bq) { add(e.x, e.y, bq[0], bq[1], e.w); continue; }
+      // ③ 远一点但方向对齐的断头（v3.48）：0.9 格内最近的线段，只有当「连线方向」与断路末段方向大致一致时才连，
+      //    避免把平行的两条街横着接起来。和县北部、当涂这类乡道断头往往差 0.5–0.8 格，只靠前两档补不上。
+      const w0 = ways[e.w].p;
+      const rev = e.x === w0[0] && e.y === w0[1] ? false : true;   // true：端点在 way 末端
+      const ex = rev ? w0[w0.length - 2] : w0[2], ey = rev ? w0[w0.length - 1] : w0[3];
+      let dx0 = e.x - ex, dy0 = e.y - ey; const dl = Math.hypot(dx0, dy0) || 1; dx0 /= dl; dy0 /= dl;
+      const near2 = G.query(city.roadWayBk, e.x - 0.9, e.y - 0.9, e.x + 0.9, e.y + 0.9);
+      let bq2 = null, bqd2 = 0.9;
+      for (const k of near2) {
+        if (k === e.w) continue;
+        const p = ways[k].p;
+        for (let q = 0; q + 3 < p.length; q += 2) {
+          const ax = p[q], ay = p[q + 1], dx = p[q + 2] - ax, dy = p[q + 3] - ay, L2 = dx * dx + dy * dy || 1;
+          let t = ((e.x - ax) * dx + (e.y - ay) * dy) / L2; t = t < 0 ? 0 : t > 1 ? 1 : t;
+          const qx = ax + t * dx, qy = ay + t * dy, d = Math.hypot(e.x - qx, e.y - qy);
+          if (d <= 0.02 || d >= bqd2) continue;
+          const ux = (qx - e.x) / d, uy = (qy - e.y) / d;
+          if (ux * dx0 + uy * dy0 < 0.5) continue;   // 夹角 > 60°，不连
+          bqd2 = d; bq2 = [qx, qy];
+        }
+      }
+      if (bq2) add(e.x, e.y, bq2[0], bq2[1], e.w);
     }
     return (this._weld = { city: city, ver: city.roadVersion, bc: bc, byCls: byCls });
+  };
+
+  // 道路压水面剔除（v3.48）：和县石杨、香泉一带的水库里画着路，和县一侧的长江里也有明显错位的路。
+  // 成因是 OSM/高德补充路段与水面多边形不同源——路穿水库、或者路段坐标整体偏到江里。
+  // 这里在渲染层剔除「整段都在水面」的线段（起点、中点、终点都落在水域格才算），
+  // 岸边道路、跨江桥梁（flags & 1）不受影响；不改地图数据，也不影响公交过桥判定。
+  // 结果按 city.roadVersion 缓存，与端点焊接共用同一套失效条件。
+  Renderer.prototype._roadWater = function (city) {
+    const c = this._waterC;
+    if (c && c.city === city && c.ver === city.roadVersion) return c.map;
+    const map = new Map(), ways = city.roadWays || [];
+    const isWater = function (x, y) {
+      const k = city.cellAt(x, y);
+      return k >= 0 && city.lu[k] === LU.WATER;
+    };
+    for (let i = 0; i < ways.length; i++) {
+      const w = ways[i], gr = city.roadGroups[w.g];
+      if (!gr) continue;
+      const p = w.p, n = (p.length / 2) | 0;
+      if (n < 2) continue;
+      // 逐段判断中点是否落在水面
+      const wet = new Uint8Array(n - 1); let anyWet = false;
+      for (let q = 0, s = 0; q + 3 < p.length; q += 2, s++) {
+        if (isWater((p[q] + p[q + 2]) / 2, (p[q + 1] + p[q + 3]) / 2)) { wet[s] = 1; anyWet = true; }
+      }
+      if (!anyWet) continue;
+      // 桥梁（flags & 1）：只裁掉伸进水里的断头（首尾连续的水段），中间真正跨水的桥段保留；
+      // 非桥梁：水里的段一律不画（水库、江面上错位的路）。
+      let a = 0, b = n - 2;
+      if (gr.flags & 1) {
+        while (a <= b && wet[a]) a++;
+        while (b >= a && wet[b]) b--;
+        if (a > b) continue;
+      }
+      const P = new Path2D(); let any = false;
+      for (let q = 0, s = 0; q + 3 < p.length; q += 2, s++) {
+        if (s < a || s > b) continue;
+        if (!(gr.flags & 1) && wet[s]) continue;
+        P.moveTo(p[q], p[q + 1]); P.lineTo(p[q + 2], p[q + 3]); any = true;
+      }
+      if (any) map.set(w, P);
+    }
+    this._waterC = { city: city, ver: city.roadVersion, map: map };
+    return map;
   };
 
   Renderer.prototype.drawGround = function (ctx, X0, Y0, X1, Y1, lvl) {
@@ -1181,7 +1247,9 @@
       const gr = city.roadGroups[w.g];
       if (gr.flags & 2) tunnels.push(w); else if (gr.flags & 4) links.push(w); else lay[gr.cls].push(w);
     }
-    const path = (arr) => { const p = new Path2D(); for (const w of arr) p.addPath(this.featurePath(w, false)); return p; };
+    // 水面上的路段（非桥梁）改用剔除后的直线段路径，其余仍走带弧线的 featurePath
+    const wet = this._roadWater(city);
+    const path = (arr) => { const p = new Path2D(); for (const w of arr) { const d = wet.get(w); if (d) p.addPath(d); else p.addPath(this.featurePath(w, false)); } return p; };
     const bridgePath = (arr) => { const p = new Path2D(); for (const w of arr) if (city.roadGroups[w.g].flags & 1) p.addPath(this.featurePath(w, false)); return p; };
     const P2 = path(lay[2]), P3 = path(lay[3]), P4 = path(lay[4]), PL = path(links), PT = path(tunnels);
     ctx.lineCap = 'round'; ctx.lineJoin = 'round';

@@ -1221,11 +1221,15 @@
       y += 30 * sc;
       lines.forEach(function (o, k) {
         const x = M0 + (k % cols) * 220 * sc, yy = y + Math.floor(k / cols) * 34 * sc;
-        c.fillStyle = AX.line(o.L); c.beginPath(); c.roundRect ? c.roundRect(x, yy - 14 * sc, 30 * sc, 20 * sc, 6 * sc) : c.rect(x, yy - 14 * sc, 30 * sc, 20 * sc); c.fill();
-        c.fillStyle = AX.ink(AX.line(o.L)); c.font = '800 ' + (12 * sc) + 'px ' + font; c.textAlign = 'center'; c.fillText(M.lineBadge(o.L), x + 15 * sc, yy + 1 * sc);
-        c.textAlign = 'left'; c.fillStyle = INK; c.font = '600 ' + (14 * sc) + 'px ' + font; c.fillText(o.L.name, x + 40 * sc, yy);
+        // 徽标宽度按简称实测（v3.48）：以前写死 30px，「和含公交1」这类 5 字简称会被裁掉。
+        const badgeTxt = M.lineBadge(o.L);
+        c.font = '800 ' + (12 * sc) + 'px ' + font;
+        const bw = Math.max(30 * sc, c.measureText(badgeTxt).width + 14 * sc);
+        c.fillStyle = AX.line(o.L); c.beginPath(); c.roundRect ? c.roundRect(x, yy - 14 * sc, bw, 20 * sc, 6 * sc) : c.rect(x, yy - 14 * sc, bw, 20 * sc); c.fill();
+        c.fillStyle = AX.ink(AX.line(o.L)); c.textAlign = 'center'; c.fillText(badgeTxt, x + bw / 2, yy + 1 * sc);
+        c.textAlign = 'left'; c.fillStyle = INK; c.font = '600 ' + (14 * sc) + 'px ' + font; c.fillText(o.L.name, x + bw + 10 * sc, yy);
         const nw = c.measureText(CM.I18n ? CM.I18n.text(o.L.name) : o.L.name).width;
-        c.fillStyle = P.sub; c.font = (12 * sc) + 'px ' + font; c.fillText(o.tp.stations.length + ' 站 · ' + kmText(KM.get(o.id)), x + 48 * sc + nw, yy);
+        c.fillStyle = P.sub; c.font = (12 * sc) + 'px ' + font; c.fillText(o.tp.stations.length + ' 站 · ' + kmText(KM.get(o.id)), x + bw + 18 * sc + nw, yy);
       });
       c.fillStyle = P.foot; c.font = (12 * sc) + 'px ' + font; c.textAlign = 'right';
       c.fillText('线型：实线为地下，带白色中线为高架，带白色枕木纹为地面；⇄ 圆环为换乘站，虚线相连为站外步行换乘', cw - M0, ch - 38 * sc);

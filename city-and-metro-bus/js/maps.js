@@ -162,10 +162,16 @@
   }
   CM.MAPS = MAPS;
   // 选择列表由易到难；同难度保留既有城市顺序，新地图按登记顺序接在同档末尾。
-  const mapOrder = ['tutorial', 'gz', 'hz', 'hk', 'tp', 'tk'];
+  // v3.48：本分支的四个剧本固定在教程之后最上面（马鞍山 2000 / 2027、和县 2000 / 2027），
+  // 玩家打开选图页先看到它们；其余城市仍按难度排序排在后面。
+  const PINNED = ['tutorial', 'ms', 'ms27', 'hx', 'hx27'];
+  const mapOrder = ['tutorial', 'ms', 'ms27', 'hx', 'hx27', 'gz', 'hz', 'hk', 'tp', 'tk'];
   for (const id of Object.keys(MAPS)) if (mapOrder.indexOf(id) < 0) mapOrder.push(id);
   const mapRank = new Map(mapOrder.map(function (id, i) { return [id, i]; }));
+  const pinRank = new Map(PINNED.map(function (id, i) { return [id, i]; }));
   CM.MAP_ORDER = mapOrder.filter(function (id) { return MAPS[id]; }).sort(function (a, b) {
+    const pa = pinRank.has(a), pb = pinRank.has(b);
+    if (pa || pb) return pa && pb ? pinRank.get(a) - pinRank.get(b) : (pa ? -1 : 1);
     return (MAPS[a].difficulty || 2) - (MAPS[b].difficulty || 2) || mapRank.get(a) - mapRank.get(b);
   });
   // ---------------- 地理数据按需载入（v2.7.1 内存） ----------------

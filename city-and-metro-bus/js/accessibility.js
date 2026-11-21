@@ -69,7 +69,12 @@
     },
     // 线图 / 地图编号：同色重复时仍可按数字区分，字色按底色亮度选择。
     svgBadge: function (line, x, y) {
-      const text = U.esc(A.number(line)), w = Math.max(22, text.length * 8 + 10), col = A.line(line);
+      const text = U.esc(A.number(line));
+      // 宽度按字宽估算（v3.48）：中文按 12px、西文数字按 7px，别再一律 8px/字——
+      // 「和含公交1」这类 5 字简称会被算窄，字被挤出圆角框。
+      let tw = 0;
+      for (const ch of String(A.number(line))) tw += /[\u3000-\u9fff\uff00-\uffef]/.test(ch) ? 12 : 7;
+      const w = Math.max(22, tw + 12), col = A.line(line);
       return '<g class="a11y-line-id" data-line="' + U.esc(line.id) + '"><rect x="' + (x - w / 2).toFixed(2) + '" y="' + (y - 9).toFixed(2) + '" width="' + w + '" height="18" rx="6" fill="' + col + '" stroke="#fff" stroke-width="2"/><text x="' + x.toFixed(2) + '" y="' + (y + 4).toFixed(2) + '" text-anchor="middle" font-size="12" font-weight="800" fill="' + A.ink(col) + '">' + text + '</text></g>';
     },
     patternCSS: function (index) { return enabled() ? ['repeating-linear-gradient(45deg,transparent 0 4px,rgba(255,255,255,.7) 4px 5px)', 'repeating-linear-gradient(-45deg,transparent 0 4px,rgba(255,255,255,.7) 4px 5px)', 'repeating-linear-gradient(0deg,transparent 0 4px,rgba(255,255,255,.7) 4px 5px)', 'radial-gradient(rgba(255,255,255,.8) 1px,transparent 1.5px)'][index % 4] : ''; },

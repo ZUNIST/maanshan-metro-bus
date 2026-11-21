@@ -18,6 +18,70 @@
       "projection": null
     },
     {
+      "id": "ms",
+      "mapVersion": 2,
+      "displayRevision": 1,
+      "terrainRevision": 1,
+      "width": 416,
+      "height": 328,
+      "cellMeters": 250,
+      "fingerprint": "51f51a44",
+      "projection": {
+        "lon0": 117.835,
+        "lat0": 32.07,
+        "kx": 390.61,
+        "ky": 440.27
+      }
+    },
+    {
+      "id": "ms27",
+      "mapVersion": 2,
+      "displayRevision": 1,
+      "terrainRevision": 1,
+      "width": 416,
+      "height": 328,
+      "cellMeters": 250,
+      "fingerprint": "8d4fec33",
+      "projection": {
+        "lon0": 117.835,
+        "lat0": 32.07,
+        "kx": 390.61,
+        "ky": 440.27
+      }
+    },
+    {
+      "id": "hx",
+      "mapVersion": 1,
+      "displayRevision": 1,
+      "terrainRevision": 1,
+      "width": 232,
+      "height": 288,
+      "cellMeters": 250,
+      "fingerprint": "81e28f05",
+      "projection": {
+        "lon0": 117.94,
+        "lat0": 32.046648648649,
+        "kx": 378.8,
+        "ky": 444
+      }
+    },
+    {
+      "id": "hx27",
+      "mapVersion": 1,
+      "displayRevision": 1,
+      "terrainRevision": 1,
+      "width": 232,
+      "height": 288,
+      "cellMeters": 250,
+      "fingerprint": "93303a30",
+      "projection": {
+        "lon0": 117.94,
+        "lat0": 32.046648648649,
+        "kx": 378.8,
+        "ky": 444
+      }
+    },
+    {
       "id": "gz",
       "mapVersion": 2,
       "displayRevision": 1,
@@ -63,22 +127,6 @@
         "lat0": 30.815654533122363,
         "kx": 383.39,
         "ky": 442.3
-      }
-    },
-    {
-      "id": "ms",
-      "mapVersion": 2,
-      "displayRevision": 1,
-      "terrainRevision": 1,
-      "width": 416,
-      "height": 328,
-      "cellMeters": 250,
-      "fingerprint": "51f51a44",
-      "projection": {
-        "lon0": 117.835,
-        "lat0": 32.07,
-        "kx": 390.61,
-        "ky": 440.27
       }
     },
     {
@@ -178,54 +226,6 @@
       }
     },
     {
-      "id": "ms27",
-      "mapVersion": 2,
-      "displayRevision": 1,
-      "terrainRevision": 1,
-      "width": 416,
-      "height": 328,
-      "cellMeters": 250,
-      "fingerprint": "8d4fec33",
-      "projection": {
-        "lon0": 117.835,
-        "lat0": 32.07,
-        "kx": 390.61,
-        "ky": 440.27
-      }
-    },
-    {
-      "id": "hx",
-      "mapVersion": 1,
-      "displayRevision": 1,
-      "terrainRevision": 1,
-      "width": 232,
-      "height": 288,
-      "cellMeters": 250,
-      "fingerprint": "81e28f05",
-      "projection": {
-        "lon0": 117.94,
-        "lat0": 32.046648648649,
-        "kx": 378.8,
-        "ky": 444
-      }
-    },
-    {
-      "id": "hx27",
-      "mapVersion": 1,
-      "displayRevision": 1,
-      "terrainRevision": 1,
-      "width": 232,
-      "height": 288,
-      "cellMeters": 250,
-      "fingerprint": "93303a30",
-      "projection": {
-        "lon0": 117.94,
-        "lat0": 32.046648648649,
-        "kx": 378.8,
-        "ky": 444
-      }
-    },
-    {
       "id": "tk",
       "mapVersion": 3,
       "displayRevision": 1,
@@ -270,22 +270,22 @@
     "img/screenshot-map-selection.png": "3fa4cb1581af31104024f0266392a0cb83ebef58d161597e73939c7c36bb64c6",
     "img/screenshot-tokyo-day.png": "1b7849f19f9c2cd725f78dc796df8c183aae9fb2179c1e79f9776c0131e58041",
     "index.html": "dc428b42cf3c4de89b874f8fdc2ad3e3b6e3b9d8c2fc13399c20cceb54219e85",
-    "js/accessibility.js": "c650e9c32c81a28b0e46cf8a756b22f84a1b69e55952170038251f4e412a37e0",
+    "js/accessibility.js": "e4e0aeb55eae7371a18a847394b80d40583b36e28fb3ec1d9205f1619ee87443",
     "js/agents.js": "54608715717cb74c13e70712e109dd3cfe1abe2ac1089f8b658474f49f032060",
     "js/bgtransit.js": "58943240311985dad70ea3a74289139f5bb822b9458db00fa1c521f30660616a",
     "js/city.js": "98dfa7825d4136c7e19bdcc00d7dd68f167c710935292a63c5534bf75c330705",
     "js/citylink.js": "9706526385e8875205f8fdd2fcfe4c7efa99ec9c1c6fa4773ffc79473bf443e0",
-    "js/config.js": "9e051ebe3b9c24d441925e289b5d54758dff87dd45293ecf6dfe7a8c0110102a",
+    "js/config.js": "5c5e20f8cd38fb2bdd492b82621b04df7d1aaa4f41cb3c9076e3600ffb96fb41",
     "js/corp.js": "67e5a35bb37e7d35eb0f04e4dede80e06dbb09b9f436c88d2eda5b623237726e",
     "js/data_bj.js": "78f58d05cfefe61e78cc733d95fec01008fb6262037da448ad2e57c83767b2a6",
     "js/data_eras.js": "bf8d6797ed756496a6b297a065e8d8025233a265e455dccdbd7b0be9e9d541e6",
     "js/data_gz.js": "d2c867192bc3c6cfd9814e4a1ade67cbbec2a58c2f8298457911983611cd6c3f",
     "js/data_hk.js": "c079b5eed742fd18adef4d772d3a7b995339cacb61c8e8ca5237bcfab45b3fd7",
-    "js/data_hx.js": "0089656938d19c1153234a3b566a0d37072df7001e95f968006b5e2b77d813ba",
+    "js/data_hx.js": "cfb15fb560fc7a9f64ac236f1f9c79b9aef3fa37c8d66702696a0086b3fe8465",
     "js/data_hx2027.js": "13c6e8d06013d37ad1d659f247bdfb64352df4a72e644ac2df952a3b3f65884d",
     "js/data_hz.js": "890828a43b13d074c4e952889e3189384daccd7eca85380762738bfc91d0e153",
     "js/data_ld.js": "715f5a62ca22e2fe70baa8c5753c5d80b663c4e38733dc1bc10047741478537d",
-    "js/data_ms.js": "3b50627b2ab91276bc3a31da95f96919e8dfdf40814e1a57bef4aafc43e8eb89",
+    "js/data_ms.js": "de36a1f378c163caae8878dd8b49d74ef8613ece593a34a662d1cc06309d6f87",
     "js/data_ms2027.js": "1884767029e07157e0aa1bb21024fde18ec30784c3a69d42517014561673595b",
     "js/data_ms2027_urban.js": "8961bb464320746f1df5895516388173bf938a83c8641902fda9f39b43e31966",
     "js/data_pa.js": "18359f08d2cc70b8caa3414eea1467d013518b3c3b5efa9246ff4315f434ce03",
@@ -325,18 +325,18 @@
     "js/locales/en.js": "5e4b19687a46b77df28c1f31c84e573ac9309d8f31c39113c3da1d46ccb3bb5d",
     "js/macro.js": "618b3a39356fe41e385ebf9c53e76714e6bb819f0a70d44832eb4ac57f1d3cb6",
     "js/main.js": "050c6580d0c5a303ff00e6b33bf8c28aa8d72869531c08be92ff3582ea88654a",
-    "js/maps.js": "bbe11882b67e1bf6141e40d8e724e569a52ae8b8c78c98a1f72449a73eab9697",
+    "js/maps.js": "8d1e25b86e0ed7148833d3285882ac3e41bd35184eec6e227d84203171478a40",
     "js/metro.js": "e87efa14924c64e5983e76ba29ac05bc3de00c88ec892e150965ed3d29924ba1",
     "js/milestones.js": "8a415c6a01c872af467f1b0d4a7eb2ec4ccdec521e91657aab88d4fea4339b24",
     "js/netlayout.js": "82a73cf1bed6927d70dce097998b02bd15d204a43b93b642e97ec0fef3911d3e",
-    "js/netmap.js": "455f0234345cd49e37f337d693ebd17cafb2745df2c0c4c0a733744095d447d8",
+    "js/netmap.js": "a752b559d26391a6257abcdefeb534dc3bd5081ba370975ec49f4ad7ba831a5d",
     "js/netreplay.js": "39e43e861eaf11ab0292224469f1f69747e479e2e66edfcb9509daff75a74abe",
-    "js/news.js": "8aa64ac2f88f577e8ffaf146d1e3f536e9928ce1c35ecce110d7c48797e4751d",
+    "js/news.js": "c14092b404dad2d2d1f3f04499365c799a57891670e06384ba1c983e79d57da5",
     "js/opsapp.js": "a14c382da854137778160e9a4ca687c467c928ee13b24c56ed4748d644727330",
     "js/pages.js": "2cbc8935b90eec1755b5ce353fa9b855f2e1965707ea8bc4dbf8afccd7e3987f",
     "js/quick.js": "e477b0a1b6639ba1bade39d5f0c292015986dcdb11310abb226186d2b25e9921",
     "js/rail-concessions.js": "68dbd9537d2319c3d2594724224f7c88215770941df207cc2ea83e84630a000b",
-    "js/render.js": "0496ae5173fc9a8968b582763f2907342a95fff01b0c25f624b733f7f69f5621",
+    "js/render.js": "cb2cbdeadc51033b5a4ca95136e0b8173d5144286d45851025f8ba91a131905a",
     "js/review.js": "73f9cbd6d97c964ccf9d42e01fc135e4c53300405e9fbaed631a3876e9cada32",
     "js/road-kernel.js": "6a8550f05ce80d4f34460da86d59f606ee8d6fdaece39bd79d4e4fe48ba072c3",
     "js/save.js": "88b2bbbf12f49573bc31ffc6982d5f3ba65770d3c9bc76a31587abdde79fb3d8",
@@ -344,7 +344,7 @@
     "js/screens.js": "46b63929b225758877d7f678671013169060e4725f7bd1e0fda6d413a70fda4f",
     "js/serve-hb.js": "831abc757f383dcf28698aade43e06fe08e0e2e8e9aed545daa4592317bd201f",
     "js/settings.js": "110e5f1e9eb109fd110b293fd884cd8cc0c681187a75f5ee5e9d0e8d9bbc3faf",
-    "js/sim-stamp.js": "a43014a8d9626b2059e6262fcecdabe7677e1b5a15b72a8893da7963c0859ef1",
+    "js/sim-stamp.js": "1406c14d0dae259aa5fb4ecc0ffc4cdb7d86e496819402df72a0c1d2ee789bef",
     "js/sim.js": "8bf691003b7b877b75b7707005a298060dfebdab6dd84ca3d0add3401fe8770d",
     "js/sites.js": "ae777e84b9b7a6ee6f441cc335511efa51c768e5f9529626e89a3c8d45aaba1e",
     "js/sketch.js": "bfddfb62897303a6b6c2bbc0263c1f63031c3489b822becfa6830c403aba5259",
