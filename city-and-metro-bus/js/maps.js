@@ -41,7 +41,8 @@
       intro: '1990 年的广州还没有一公里地铁。老城的街巷挤满公交与自行车，天河才刚刚起步，珠江新城仍是一片农田。你要在老城与天河之间画下第一条线，再跟着城市一路向东、向南跨过珠江。',
       features: [['bridge', '珠江越江', '珠江把城市分成两岸，越江段可以建隧道或桥梁'], ['map', '35 个片区逐年开放', '珠江新城、番禺、大学城、花都与知识城按真实年份开放，新白云机场在图内'], ['building', '33 处真实地标', '中山纪念堂、广州塔、东塔按落成年份出现'], ['flag', '7 项历史任务', '参考广州地铁的发展需求，不要求复刻真实线路']],
       highlights: [[1993, '珠江新城开始规划'], [1996, '广州东站建成'], [2000, '番禺撤市设区'], [2004, '新白云机场与大学城启用'], [2010, '亚运会，广州塔落成']],
-      geo: CM.GEO, data: Object.assign({}, CM.DATA),
+      // v3.56：广州地理改为按需加载，geo 指向 geo-index 里的桩（water/roads 在打开地图时才填进来）
+      geo: (CM.GEOS && CM.GEOS.gz) || CM.GEO, data: Object.assign({}, CM.DATA),
       cfg: GZ_CFG,
       cam: { cx: 30, cy: 137, zoom: 18 },   // v2.9 地图向北扩大 80 格，镜头仍对准老城
     },
@@ -306,6 +307,27 @@
         script.textContent = inline.textContent;
         document.head.appendChild(script);
         settle();
+        return;
+      }
+      // v3.56：网页版优先取 gzip 版地理数据（地形数据量大，gzip 后约为原来的 1/3），
+      // 拿到后在本地解压成文本执行；取不到或不支持 DecompressionStream 时退回原来的 script.src。
+      // 单文件版与 file:// 打开不走这条（inline 已处理 / isHttp 为假）。
+      if (isHttp && key && window.fetch && 'DecompressionStream' in window) {
+        const plain = CM.geoAssetPath(stub, retry), q = plain.indexOf('?');
+        const gzPath = q < 0 ? plain + '.gz' : plain.slice(0, q) + '.gz' + plain.slice(q);
+        fetch(gzPath).then(function (r) {
+          if (!r.ok) throw new Error('gz ' + r.status);
+          return new Response(r.body.pipeThrough(new DecompressionStream('gzip'))).text();
+        }).then(function (text) {
+          if (settled) return;
+          script.textContent = text;          // 内联脚本同步执行，不触发 onload
+          document.head.appendChild(script);
+          settle();
+        }).catch(function () {
+          if (settled) return;
+          if (isHttp && stub.integrity) script.integrity = stub.integrity;
+          script.src = plain; document.head.appendChild(script);   // onload / onerror 已挂好
+        });
         return;
       }
       if (key && document.readyState === 'loading') {

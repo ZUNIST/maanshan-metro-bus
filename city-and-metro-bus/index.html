@@ -75,15 +75,17 @@
   <div id="app"></div>
   <noscript>本游戏需要启用 JavaScript。</noscript>
   <script src="js/util.js"></script>
-  <script src="js/vendor/opencc/cn2t.js"></script>
+  <!-- v3.56：简繁转换表（1 MB）与英文词典（1.5 MB）按需加载，切到繁体 / 英文时才取 -->
+  <script src="js/vendor/opencc/cn2t.js" type="application/city-metro-lazy"></script>
   <script src="js/vendor/pinyin/pinyin-pro.js"></script>
-  <script src="js/locales/en.js"></script>
+  <script src="js/locales/en.js" type="application/city-metro-lazy"></script>
   <script src="js/i18n.js"></script>
   <script src="js/config.js"></script>
   <script src="js/accessibility.js"></script>
   <script src="js/news.js"></script>
   <script src="js/legal.js"></script>
-  <script src="js/geo_gz.js"></script>
+  <!-- v3.56：广州地理数据改为按需加载，首屏不再白等 1.5 MB（打开广州图时再取） -->
+  <script src="js/geo_gz.js" type="application/city-metro-geo"></script>
   <script src="js/geo.js"></script>
   <script src="js/data_gz.js"></script>
   <script src="js/data_tutorial.js"></script>

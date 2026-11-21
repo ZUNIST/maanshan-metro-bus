@@ -4,7 +4,23 @@
   const allowed=['zh-CN','zh-TW','en'],hasHan=s=>/\p{Script=Han}/u.test(s),cache=new Map(),sources=new WeakMap(),attrs=new WeakMap(),listeners=new Set();
   let language='zh-CN',traditional=null,namesReady=false,trie=null,templates=null;
   try{const s=JSON.parse(localStorage.getItem('cm1.settings')||'null');if(s&&allowed.includes(s.language))language=s.language;}catch(e){/* settings unavailable */}
-  const en=CM.I18N_EN||Object.create(null),names=new Map(),nameLengths=new Map(),missing=new Set();
+  // v3.56：英文词典（1.5 MB）与简繁转换表（1 MB）都改成按需加载——中文玩家不该为它们等首屏。
+  // 词典因此不能是 const：动态注入完成后用 refreshDict() 重新取一次，把缓存与索引清掉再重刷界面。
+  let en=CM.I18N_EN||Object.create(null);
+  const names=new Map(),nameLengths=new Map(),missing=new Set();
+  function refreshDict(){en=CM.I18N_EN||Object.create(null);trie=null;templates=null;cache.clear();names.clear();nameLengths.clear();}
+  // 按需注入脚本：同一 URL 只加载一次，失败不抛出（退回原文显示）
+  const dictLoading=Object.create(null);
+  function loadScript(src){
+    if(dictLoading[src])return dictLoading[src];
+    dictLoading[src]=new Promise(function(resolve){
+      if(typeof document==='undefined'){resolve(false);return;}
+      const el=document.createElement('script');
+      el.src=src;el.onload=function(){resolve(true);};el.onerror=function(){resolve(false);};
+      document.head.appendChild(el);
+    });
+    return dictLoading[src];
+  }
   // Per-map names (v2.9): the shared catalogue holds other cities' translated names (清塘 is New York's Fresh Pond,
   // 南岸 London's South Bank), so on a map with its own list the current map's spelling wins, whole or inside a sentence.
   const enMaps=CM.I18N_EN_MAP||Object.create(null),mapTries=new Map();
@@ -133,11 +149,15 @@
     if(CM.Stats&&CM.Stats.isOpen())CM.Stats.redraw();if(CM.NetMap)CM.NetMap.refresh(true);
   }
   function apply(next){
-    if(!allowed.includes(next))next='zh-CN';language=next;cache.clear();
+    if(!allowed.includes(next))next='zh-CN';
+    // 缺哪份就取哪份：英文取 en.js，繁体取 OpenCC 的 cn2t.js；取到后 refreshDict 再重刷一次
+    if(next==='en'&&!CM.I18N_EN){language='zh-CN';loadScript('js/locales/en.js').then(function(ok){if(ok){refreshDict();apply('en');}});next='zh-CN';}
+    else if(next==='zh-TW'&&typeof window!=='undefined'&&!window.OpenCC){language='zh-CN';loadScript('js/vendor/opencc/cn2t.js').then(function(ok){if(ok)apply('zh-TW');});next='zh-CN';}
+    language=next;cache.clear();
     if(typeof document==='undefined')return;document.documentElement.lang=language;document.documentElement.dataset.language=language;
     localize(document.body);document.title=text('城市与地铁');invalidate();for(const f of listeners)f(language);
   }
-  CM.I18n={text,get:()=>language,apply,localize,name:nameEnglish,search:s=>(String(s)+' '+text(String(s))).toLowerCase(),on(fn){listeners.add(fn);return()=>listeners.delete(fn);},missing:()=>[...missing]};
+  CM.I18n={text,get:()=>language,apply,localize,ensure:function(lang){return lang==='en'?loadScript('js/locales/en.js'):lang==='zh-TW'?loadScript('js/vendor/opencc/cn2t.js'):Promise.resolve(true);},name:nameEnglish,search:s=>(String(s)+' '+text(String(s))).toLowerCase(),on(fn){listeners.add(fn);return()=>listeners.delete(fn);},missing:()=>[...missing]};
   if(typeof document==='undefined')return;
   // Translate newly constructed controls before callers measure or attach them.
   const h=CM.U.h;CM.U.h=function(){const el=h.apply(this,arguments);localize(el);return el;};
