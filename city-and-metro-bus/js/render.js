@@ -5887,6 +5887,9 @@
       // v3.37：车站/枢纽设施已经标出名字的地方，地名库里的同名点不再重复标。地名库本身就把「马鞍山南」
       // 「当涂东」这类站名当 level-1 地名收着（OSM 的 railway=station 节点带 name），不滤会让每座站多一个标签
       const siteNames = labeledSt.concat(hubShown.map(function (h) { return { n: String(h.name).replace(/站$/, ''), x: h.x, y: h.y }; }));
+      // v3.53：缩略视野（z<16）画着乡镇名标签，同名的 OSM place 节点（如「郑蒲港」在图上有两个节点）
+      // 会在几公里内重复标一次。缩略时把这些同名节点让给乡镇名标签，放大后（z≥16，乡镇名不画）照常显示。
+      const dlab = z < 16 ? (city.districtLabels || []).filter(function (d) { return typeof d[1] === 'number'; }) : [];
       const maxL = z >= 15 ? 2 : (z >= 13 ? 1 : 0);
       if (maxL) {
         const cand = [];
@@ -5897,6 +5900,7 @@
             const nm = String(p[0]).replace(/站$/, '');
             if (siteNames.some(function (s) { return s.n === nm && U.dist(s.x, s.y, p[1], p[2]) < 3; })) continue;
           }
+          if (dlab.length && dlab.some(function (d) { return d[0] === p[0] && U.dist(d[1], d[2], p[1], p[2]) < 25; })) continue;
           cand.push(p);
         }
         if (cand.length > 90) {
