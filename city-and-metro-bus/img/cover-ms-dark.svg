@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" width="1600" height="900" preserveAspectRatio="xMidYMid slice">
+<defs>
+    <linearGradient id="riv" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#17293c"/><stop offset="1" stop-color="#1d3247"/></linearGradient>
+    <filter id="soft" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="18"/></filter>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#18222f" stroke-width="1"/></pattern>
+  </defs>
+<rect width="1600" height="900" fill="#0f1722"/>
+<rect width="1600" height="900" fill="url(#grid)" opacity="0.55"/>
+<g fill="#161f2b" opacity="0.9">
+<rect x="1180" y="150" width="220" height="120" rx="14"/>
+<rect x="1210" y="300" width="250" height="160" rx="14"/>
+<rect x="1150" y="560" width="230" height="180" rx="14"/>
+<rect x="1230" y="700" width="200" height="120" rx="14"/>
+<rect x="520" y="360" width="210" height="190" rx="14"/>
+<rect x="560" y="600" width="200" height="150" rx="14"/>
+<rect x="660" y="240" width="150" height="130" rx="14"/>
+<rect x="300" y="240" width="160" height="120" rx="14"/>
+</g>
+<path d="M958 -60 C936 190 906 420 838 610 C800 728 768 842 756 960 L896 960 C906 840 936 730 972 620 C1040 430 1072 200 1094 -60 Z" fill="url(#riv)"/>
+<text x="1010" y="300" fill="#8fa0b4" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="26" letter-spacing="10" opacity="0.7" transform="rotate(78 1010 300)">长　江</text>
+<path d="M1010 586 L860 604" stroke="#2a3b4e" stroke-width="14" stroke-linecap="round" opacity="0.9"/>
+<path d="M1010 586 L860 604" stroke="#0f1722" stroke-width="5" stroke-dasharray="12 12" opacity="0.9"/>
+<path id="p-nh" d="M712 626 C714 588 724 566 734 540 C732 500 728 486 722 470 C716 440 710 420 706 404 C698 372 692 354 686 336 C672 304 660 286 648 268 C628 240 614 222 600 206 C580 180 562 162 548 146" fill="none" stroke="#0f1722" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M712 626 C714 588 724 566 734 540 C732 500 728 486 722 470 C716 440 710 420 706 404 C698 372 692 354 686 336 C672 304 660 286 648 268 C628 240 614 222 600 206 C580 180 562 162 548 146" fill="none" stroke="#a86ab5" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="p-nm" d="M1258 118 L1250 208 L1244 282 L1238 356 L1232 428 L1226 505 C1214 548 1200 588 1186 618 C1172 676 1160 710 1152 742" fill="none" stroke="#0f1722" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1258 118 L1250 208 L1244 282 L1238 356 L1232 428 L1226 505 C1214 548 1200 588 1186 618 C1172 676 1160 710 1152 742" fill="none" stroke="#c2456f" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<path id="p-mz" d="M1226 505 C1180 520 1146 540 1112 556 C1064 576 1032 590 1000 596 C880 604 800 618 712 626" fill="none" stroke="#0f1722" stroke-width="18" stroke-linecap="round" stroke-linejoin="round"/>
+<path d="M1226 505 C1180 520 1146 540 1112 556 C1064 576 1032 590 1000 596 C880 604 800 618 712 626" fill="none" stroke="#0f7fbf" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+<circle cx="1258" cy="118" r="9" fill="#101a26" stroke="#c2456f" stroke-width="5"/>
+<text x="1280" y="126" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">慈湖高新区</text>
+<circle cx="1250" cy="208" r="9" fill="#101a26" stroke="#c2456f" stroke-width="5"/>
+<text x="1272" y="216" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="21" font-weight="500">湖北路·二中</text>
+<circle cx="1244" cy="282" r="9" fill="#101a26" stroke="#c2456f" stroke-width="5"/>
+<text x="1266" y="290" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="21" font-weight="500">湖南路·安工大</text>
+<circle cx="1238" cy="356" r="9" fill="#101a26" stroke="#c2456f" stroke-width="5"/>
+<text x="1260" y="364" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">雨山东路</text>
+<circle cx="1232" cy="428" r="9" fill="#101a26" stroke="#c2456f" stroke-width="5"/>
+<text x="1254" y="436" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">阳湖</text>
+<circle cx="1226" cy="505" r="15" fill="#101a26" stroke="#c2456f" stroke-width="8"/>
+<circle cx="1226" cy="505" r="5" fill="#c2456f"/>
+<text x="1248" y="513" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="21" font-weight="500">马鞍山经开区</text>
+<circle cx="1186" cy="618" r="9" fill="#101a26" stroke="#c2456f" stroke-width="5"/>
+<text x="1208" y="626" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">姑孰</text>
+<circle cx="1152" cy="742" r="9" fill="#101a26" stroke="#c2456f" stroke-width="5"/>
+<text x="1174" y="750" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">太白</text>
+<circle cx="1112" cy="556" r="9" fill="#101a26" stroke="#0f7fbf" stroke-width="5"/>
+<text x="1112" y="530" text-anchor="middle" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">马鞍山南</text>
+<circle cx="1000" cy="596" r="9" fill="#101a26" stroke="#0f7fbf" stroke-width="5"/>
+<text x="1000" y="636" text-anchor="middle" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">江心洲</text>
+<circle cx="712" cy="626" r="15" fill="#101a26" stroke="#0f7fbf" stroke-width="8"/>
+<circle cx="712" cy="626" r="5" fill="#0f7fbf"/>
+<text x="712" y="666" text-anchor="middle" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">郑蒲港</text>
+<circle cx="734" cy="540" r="9" fill="#101a26" stroke="#a86ab5" stroke-width="5"/>
+<text x="756" y="548" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">太阳河</text>
+<circle cx="722" cy="470" r="9" fill="#101a26" stroke="#a86ab5" stroke-width="5"/>
+<text x="744" y="478" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">历阳</text>
+<circle cx="706" cy="404" r="9" fill="#101a26" stroke="#a86ab5" stroke-width="5"/>
+<text x="728" y="412" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">海峰路</text>
+<circle cx="686" cy="336" r="9" fill="#101a26" stroke="#a86ab5" stroke-width="5"/>
+<text x="708" y="344" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">和县经开区</text>
+<circle cx="648" cy="268" r="9" fill="#101a26" stroke="#a86ab5" stroke-width="5"/>
+<text x="670" y="276" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">宋桥</text>
+<circle cx="600" cy="206" r="9" fill="#101a26" stroke="#a86ab5" stroke-width="5"/>
+<text x="622" y="214" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">浦和产业园</text>
+<circle cx="548" cy="146" r="9" fill="#101a26" stroke="#a86ab5" stroke-width="5"/>
+<text x="570" y="154" text-anchor="start" fill="#e6eef8" font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="23" font-weight="500">高家冲</text>
+<g font-family="'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif" font-size="22" fill="#8fa0b4">
+<rect x="1000" y="802" width="34" height="10" rx="5" fill="#c2456f"/>
+<text x="1046" y="812" >宁马线</text>
+<rect x="1149" y="802" width="34" height="10" rx="5" fill="#0f7fbf"/>
+<text x="1195" y="812" >马郑线</text>
+<rect x="1298" y="802" width="34" height="10" rx="5" fill="#a86ab5"/>
+<text x="1344" y="812" >宁和线</text>
+</g>
+</svg>

@@ -50,11 +50,13 @@
     // kmh  —— 最高速度（只作说明并用于速度档解锁）：现实城市公交设计时速 60–80，但受道路限速，
     //         游戏里与四档运营速度 15/20/25/30 对齐；纯电不比柴油慢，后期车型均可跑满 30 档。
     M({ id: 'bus-early', bus: true, name: '早期公共汽车', short: '老公交', from: 1920, to: 1975, cap: 45, price: 20, ops: 1.32, life: 8, max: 1, kmh: 20, look: 'green', desc: '8–9 米汽油/柴油单机，定员约 45 人；油耗与故障率高、8 年即退役，最高 20 km/h' }),
-    M({ id: 'bus-standard', bus: true, name: '标准城市公交', short: '标准公交', from: 1960, to: 2005, cap: 70, price: 32, ops: 1.12, life: 10, max: 1, kmh: 30, look: 'classicLine', desc: '10 米级柴油单机大巴，定员约 70 人，购价约 40 万级；城市公交的主力，寿命 10 年' }),
-    M({ id: 'bus-ac', bus: true, name: '空调公交车', short: '空调车', from: 1995, to: 9999, cap: 85, price: 50, ops: 1.18, life: 10, max: 1, kmh: 30, look: 'white', desc: '12 米空调低入口大巴，定员约 85 人；空调增油耗，单公里运营费高于普通柴油车' }),
-    M({ id: 'bus-electric', bus: true, name: '纯电动公交车', short: '电动公交', from: 2012, to: 9999, cap: 80, price: 72, ops: 0.86, life: 8, max: 1, kmh: 30, look: 'future', desc: '10–12 米纯电，定员约 80 人；购价约 90 万级但能耗与维保最省（运营费系数最低），电池约 8 年一换' }),
-    M({ id: 'bus-artic', bus: true, name: '铰接式公交车', short: '铰接公交', from: 1980, to: 9999, cap: 125, price: 88, ops: 1.10, life: 10, max: 1, kmh: 30, look: 'paint', desc: '18 米铰接车，定员约 125 人，购价约 180 万级（约为单机的 3 倍）；适合 BRT 专用道与高客流走廊' }),
-    M({ id: 'bus-brt', bus: true, name: 'BRT 快速公交专用车', short: 'BRT 车', from: 2004, to: 9999, cap: 155, price: 110, ops: 1.02, life: 8, max: 1, kmh: 30, look: 'whiteNew', desc: '18 米 BRT 铰接车，定员约 155 人，购价 200–250 万级（游戏折算）；水平登乘、多门、信号优先' }),
+    M({ id: 'bus-standard', bus: true, name: '标准城市公交', short: '标准公交', from: 1960, to: 2005, cap: 70, price: 32, ops: 1.12, life: 10, max: 1, kmh: 20, look: 'classicLine', desc: '10 米级柴油单机大巴，定员约 70 人，购价约 40 万级；混行路权下最高 20 km/h' }),
+    M({ id: 'bus-ac', bus: true, name: '空调公交车', short: '空调车', from: 1995, to: 9999, cap: 85, price: 50, ops: 1.18, life: 10, max: 1, kmh: 30, look: 'white', desc: '12 米空调低入口大巴，定员约 85 人；能跑专用道 30 km/h，混行路仍按 20 限速' }),
+    // v3.55：原「无人驾驶车」在公交里就是这台 2020 年代的新能源车，改称「新能源快速公交」：
+      // 纯电 + 可无人驾驶的快速公交版（BRT/专用道走廊用），最高 40 km/h，能耗与人力成本都最低。
+      M({ id: 'bus-electric', bus: true, name: '新能源快速公交', short: '新能源快巴', from: 2020, to: 9999, cap: 80, price: 78, ops: 0.78, life: 8, max: 1, kmh: 40, look: 'future', desc: '纯电驱动、可无人驾驶的快速公交车型：12 米级、定员约 80 人，BRT/专用道走廊可跑 40 km/h；购价与能耗均低于同级柴油车，电池约 8 年一换' }),
+    M({ id: 'bus-artic', bus: true, name: '铰接式公交车', short: '铰接公交', from: 1980, to: 9999, cap: 125, price: 88, ops: 1.10, life: 10, max: 1, kmh: 30, look: 'paint', desc: '18 米铰接车，定员约 125 人，购价约 180 万级（约为单机的 3 倍）；专用道 30 km/h，适合高客流走廊' }),
+    M({ id: 'bus-brt', bus: true, name: 'BRT 快速公交专用车', short: 'BRT 车', from: 2004, to: 9999, cap: 155, price: 110, ops: 1.02, life: 8, max: 1, kmh: 40, look: 'whiteNew', desc: '18 米 BRT 铰接车，定员约 155 人，购价 200–250 万级（游戏折算）；封闭专用道可跑 40 km/h，水平登乘、多门、信号优先' }),
     // 悉尼：城铁双层列车与全自动地铁
     M({ id: 'sy-millennium', maps: ['sy'], name: '千禧双层列车', short: '千禧列车', from: 2002, to: 2011, cap: 280, price: 430, ops: 1.02, life: 35, max: 8, kmh: 100, look: 'steel', lookX: { band: '#e8b400' }, desc: '城铁在 2000 年代初订造的双层车，座位多，但上下车慢' }),
     M({ id: 'sy-waratah', maps: ['sy'], name: '沃拉塔双层列车', short: '沃拉塔', from: 2011, to: 9999, cap: 290, price: 460, ops: 0.95, life: 35, max: 8, kmh: 115, look: 'whiteNew', lookX: { band: '#f2a900' }, desc: '有空调的新一代双层车，城铁的主力车型' }),
@@ -468,8 +470,14 @@
     changed(g); return { ok: true, value: v, n: n };
   };
   F.move = function (g, ids, lid, svc) {
+    // v3.55：车型制式必须与目标线路一致（地铁车不上公交线，公交/电车同理）；车辆段（lid 空）不限
+    const want = lid && g.net.lines[lid] ? CM.Metro.sysOf(g.net.lines[lid]) : null;
     let n = 0;
-    for (const t of g.fleet.trains) if (ids.indexOf(t.id) >= 0) { t.line = lid || null; t.svc = lid ? svc : null; n++; }
+    for (const t of g.fleet.trains) {
+      if (ids.indexOf(t.id) < 0) continue;
+      if (want && F.sysOfModel(F.model(t.model)) !== want) continue;
+      t.line = lid || null; t.svc = lid ? svc : null; n++;
+    }
     if (n) changed(g); return n;
   };
   // 车辆段智能分配（v2.6.1 玩家反馈）：闲置列车一列一列分给高峰缺口比例最大的交路，只分站台放得下、速度够的车，优先运力大的车；
@@ -478,9 +486,12 @@
     const needs = [], idle = g.fleet.trains.filter(function (t) { return !t.line; }).sort(function (a, b) { return F.capOf(b) - F.capOf(a); }), total = idle.length;
     for (const lid of CM.Metro.sortIds(Object.keys(g.net.lines))) {
       const o = g.fleet.ops[lid]; if (o && o.mode === 'manual') continue;
-      for (const s of F.lineInfo(g, lid) || []) if (s.short > 0) needs.push({ lid: lid, svc: s.id, name: s.name, rt: s.rt, avail: s.avail, need: s.peakNeed, short: s.short, maxCars: s.maxCars, ids: [], stuck: false });
+      for (const s of F.lineInfo(g, lid) || []) if (s.short > 0) needs.push({ lid: lid, svc: s.id, name: s.name, rt: s.rt, avail: s.avail, need: s.peakNeed, short: s.short, maxCars: s.maxCars, ids: [], stuck: false, sys: CM.Metro.sysOf(g.net.lines[lid]) });
     }
-    const fit = function (t, x) { return t.cars <= x.maxCars && (x.rt.kmh <= 80 || F.model(t.model).kmh >= x.rt.kmh); };
+    const fit = function (t, x) {
+      if (x.sys && F.sysOfModel(F.model(t.model)) !== x.sys) return false;   // v3.55：不跨制式配车
+      return t.cars <= x.maxCars && (x.rt.kmh <= 80 || F.model(t.model).kmh >= x.rt.kmh);
+    };
     for (;;) {
       let best = null, bs = 0;
       for (const x of needs) { if (x.short <= 0 || x.stuck) continue; const v = x.short / Math.max(1, x.need) + x.short * 1e-3; if (v > bs) { bs = v; best = x; } }
@@ -803,8 +814,11 @@
     const speedBtns = lightSys
       ? lcfg.speeds.map(function (v) {
         const on = cur === v, open = F.speedOpen(g.mapId, y, v, lightSys);
-        return h('button', { class: on ? 'on' : '', disabled: on ? true : null, 'data-silent': '1',
-          'data-tip': v + ' km/h：标称运营速度。实际旅速由站距、停站与' + (bus ? '道路条件' : '平交道口') + '决定，与路权档位无关' + (bus ? '；公交沿城市道路转弯，不设最小曲线半径' : '') + (open.ok ? '' : '。当年没有能跑 ' + v + ' km/h 的' + (bus ? '公交' : '电车') + '车型' + (open.year ? '（' + open.year + ' 年开放）' : '')),
+        // v3.55：公交运营速度按路权封顶——混行 20 / 专用道 30 / BRT 40，超过本档上限的按钮不可选
+        const cap = bus ? ((CFG.bus.speedCap || {})[MM.sysGrade(L).id] || 20) : 999;
+        const overCap = v > cap;
+        return h('button', { class: on ? 'on' : '', disabled: on || overCap ? true : null, 'data-silent': '1',
+          'data-tip': v + ' km/h：标称运营速度。实际旅速由站距、停站与' + (bus ? '道路条件' : '平交道口') + '决定，与路权档位无关' + (bus ? '；公交沿城市道路转弯，不设最小曲线半径' : '') + (overCap ? '。当前服务等级最高 ' + cap + ' km/h（混行 20 / 专用道 30 / BRT 40），要更快请先升级服务等级' : '') + (open.ok ? '' : '。当年没有能跑 ' + v + ' km/h 的' + (bus ? '公交' : '电车') + '车型' + (open.year ? '（' + open.year + ' 年开放）' : '')),
           onclick: function () {
             if (on) return;
             const r = g.edit(function (n) { const l = n.lines[lid]; if (!l) return { error: '线路不存在' }; l.speed = v; });
@@ -831,7 +845,13 @@
             'data-tip': x.name + '：造价约 ' + (x.track / 10000).toFixed(2) + ' 亿/km · ' + (x.crossPerKm ? '平交 ' + x.crossPerKm + ' 口/km × ' + x.crossSec + ' s/口' : '无平交道口') + ' · 最长 ' + x.maxCars + (bus ? ' 辆' : ' 节') + ' · 每' + (bus ? '辆 ' : '节 ') + x.carCap + ' 人。改动会按新档位重算建设费，确认后生效',
             onclick: function () {
               if (on) return;
-              const r = g.edit(function (n) { const l = n.lines[lid]; if (!l) return { error: '线路不存在' }; l.grade = x.id; });
+              const r = g.edit(function (n) {
+                const l = n.lines[lid]; if (!l) return { error: '线路不存在' };
+                l.grade = x.id;
+                // 降级时速度压回新路权上限（BRT 40 → 专用道 30 → 混行 20），避免出现「混行却按 40 跑」
+                const cap2 = bus ? ((CFG.bus.speedCap || {})[x.id] || 20) : 999;
+                if ((l.speed || MM.cfgOf(l).defaultSpeed) > cap2) l.speed = cap2;
+              });
               if (r.error) self.toast(r.error, 'bad');
               else { self.toast((L.name || '') + ' 的服务等级改为「' + x.name + '」，确认建设后按新档位结算', 'info'); self.rerenderPage(); }
             } }, x.name);
@@ -1092,11 +1112,15 @@
         const svcLabel = L && s.svc ? (F.lineInfo(g, s.line) || []).filter(function (x) { return x.id === s.svc; }).map(function (x) { return x.name; })[0] : null;
         box.appendChild(h('div', { class: 'fl-h' }, svcLabel || (L ? L.name : '车辆段（闲置）'), use ? h('span', { class: 'tiny muted', style: { marginLeft: '8px' } }, use) : null));
         const lineKmh = CM.Metro.lineKmh(g.net.lines[lid]);
+        // v3.55：车型只能在同制式的线路上跑——地铁车不能开上公交/电车线，反之亦然
+        const wantSys = CM.Metro.sysOf(g.net.lines[lid]);
         for (const x of groupTrains(g, s.list)) {
-          const tooLong = x.cars > maxCars, slow = lineKmh > 80 && x.m.kmh < lineKmh, ok = !tooLong && !slow;
+          const badSys = F.sysOfModel(x.m) !== wantSys;
+          const tooLong = x.cars > maxCars, slow = lineKmh > 80 && x.m.kmh < lineKmh, ok = !tooLong && !slow && !badSys;
+          const units = { metro: '节', tram: '节', bus: '辆' }[F.sysOfModel(x.m)];
           box.appendChild(h('div', { class: 'fo-unit' },
             h('span', { class: 'fo-pic', html: F.sideSVG(x.m, lineColor(g, lid), 84) }),
-            h('div', { class: 'grow' }, h('b', null, F.shortOf(x.m) + ' · ' + x.cars + ' 节 × ' + x.ids.length), ok ? null : h('small', { class: 'bad' }, tooLong ? '编组超过本线站台长度（最长 ' + maxCars + ' 节）' : '最高 ' + x.m.kmh + ' km/h，低于本线运行速度 ' + lineKmh + ' km/h')),
+            h('div', { class: 'grow' }, h('b', null, F.shortOf(x.m) + ' · ' + x.cars + ' ' + units + ' × ' + x.ids.length), ok ? null : h('small', { class: 'bad' }, badSys ? ('是' + (F.sysOfModel(x.m) === 'bus' ? '公交' : F.sysOfModel(x.m) === 'tram' ? '有轨电车' : '地铁') + '车型，不能用在' + ({ metro: '地铁', tram: '有轨电车', bus: '公交' }[wantSys]) + '线上') : tooLong ? '编组超过本线站台长度（最长 ' + maxCars + ' 节）' : '最高 ' + x.m.kmh + ' km/h，低于本线运行速度 ' + lineKmh + ' km/h')),
             h('button', { class: 'btn sm', disabled: ok ? null : true, onclick: function () { sfx('trainMove'); F.move(g, [x.ids[x.ids.length - 1]], lid, svc); draw(); self.markUnsaved(); } }, '调入 1 列'),
             x.ids.length > 1 ? h('button', { class: 'btn sm ghost', disabled: ok ? null : true, onclick: function () { sfx('trainMove'); F.move(g, x.ids.slice(), lid, svc); draw(); self.markUnsaved(); } }, '全部') : null));
         }

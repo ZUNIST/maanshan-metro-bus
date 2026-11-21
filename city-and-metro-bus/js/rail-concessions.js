@@ -133,10 +133,12 @@
   };
   const HX27_LINES = [chaomaHx, ninganHx];
 
-  // 线路定义按 mapId 取：ms27（马鞍山全域）与 hx27（和县）各两条。
+  // 线路定义按 mapId 取：ms27（马鞍山全域）、ms30（马鞍山 2030，同一张 ms 格网）与 hx27（和县）各两条。
   // seg 是虚拟线路的号段偏移（900000 + seg），四条线互不冲突。
+  // v3.54：ms30 与 ms27 共用同一份巢马/宁安定义——两图格网、地标与接驳口完全一致（ms30 派生自 ms27），
+  // 2030 年开局时两条城际均已通车（巢马 2027、宁安 2015），因此开局即可签约。
   const MS27_LINES = [chaoma, ningan];
-  const LINES_BY_MAP = { ms27: MS27_LINES, hx27: HX27_LINES };
+  const LINES_BY_MAP = { ms27: MS27_LINES, ms30: MS27_LINES, hx27: HX27_LINES };
   R.definitions = g => LINES_BY_MAP[g.mapId] || [];
   R.definition = g => R.definitions(g)[0] || null;   // 兼容旧调用（第一条=巢马）
   // 阶段变更年份（站点按 from 过滤 + 年份进入编译缓存 key）。各线开局即全线可用，无后续阶段。

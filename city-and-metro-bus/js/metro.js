@@ -746,7 +746,15 @@
   };
   M.tramGrade = function (L) { return M.sysGrade(L); };   // 兼容旧调用
   M.lineKmh = function (L) {
-    if (L && L.speed) return L.speed;
+    // v3.55：公交运营速度不能超过路权上限（混行 20 / 专用道 30 / BRT 40）。
+    // 旧存档里可能存着「混行 30」这类超过新规则的值，这里统一夹到上限，不必等玩家重设。
+    if (L && L.speed) {
+      if (M.isBus(L)) {
+        const cap = (CFG.bus.speedCap || {})[(M.sysGrade(L) || {}).id] || 20;
+        return Math.min(L.speed, cap);
+      }
+      return L.speed;
+    }
     return M.isLight(L) ? M.cfgOf(L).defaultSpeed : 80;
   };
   M.speedGrade = function (L) {
@@ -2204,6 +2212,14 @@
             let km = 0, cost = 0;
             for (const s of M.lineSegs(draft, lid)) { const gm = M.segGeom(draft, s, city); km += gm.lenM / 1000; cost += gm.lenM / 1000 * C.trackPerKm[s.type] * (gb.track - ga.track) * ci; }
             item('upgrade', '提速改造 ' + line.name + '（' + U.fmtNum(km, 1) + ' km，' + ga.kmh + ' → ' + gb.kmh + ' km/h）', cost, lid);
+          } else if (M.isLight(line) && gb.kmh > ga.kmh) {
+            // v3.55：公交 / 有轨电车提速也要改造（信号优先、道口、供电与限速标志），按全线长度 × 速度增量计价；
+            // 地铁本来就按轨道等级加价（上面的 gb.track > ga.track 分支），轻轨类没有轨道等级，单列这一档。
+            const lc = M.cfgOf(line), per = lc.speedCostPerKmh || 0;
+            let km = 0;
+            for (const s of M.lineSegs(draft, lid)) km += M.segGeom(draft, s, city).lenM / 1000;
+            const cost = km * (gb.kmh - ga.kmh) * per * ci;
+            if (cost > 0) item('upgrade', '提速改造 ' + line.name + '（' + U.fmtNum(km, 1) + ' km，' + ga.kmh + ' → ' + gb.kmh + ' km/h）', cost, lid);
           }
         }
         // 支线的运营方向（v2.3）：起点端（主干）与主线方向由玩家指定，只改运营组织，不收费
@@ -2261,12 +2277,16 @@
           fixes: [{ label: '删除本条' + M.sysName(other) + '线路在本站的连接', op: 'removeStation', station: sid }] });
         continue;
       }
-      // ② 公交与电车不能同站换乘
-      if (busL.length && tramL.length) {
-        conflict({ type: 'busShare', kind: 'station', ref: sid, x: st.x, y: st.y,
-          msg: '车站「' + st.name + '」同时被' + draft.lines[busL[0]].name + '（公交）与' + draft.lines[tramL[0]].name + '（有轨电车）使用',
-          how: '公交是路边虚拟站牌、没有站台层，不能与有轨电车同站换乘。把其中一条改到相邻 100–500 m 处另设一站，乘客会站外步行换乘，同样计入换乘。',
-          fixes: [{ label: '把' + draft.lines[busL[0]].name + '移出本站', op: 'removeStation', station: sid }] });
+      // ② 公交站的同站换乘（v3.55）：普通公交站（S/M/L）可以与公交、有轨电车、地铁同站换乘——
+      // 公交站就是路边站牌/候车区，与地面电车、地面地铁站共用一个站台区即可；不同平面（地铁地下/高架）同样算同站换乘。
+      // 只有 BRT 封闭站台例外：屏蔽门、闸机与专用通道自成一套票务，只能与其他公交线路同站换乘。
+      if (busL.length && (tramL.length || metroL.length) && st.size === 'XL') {
+        const other = tramL.length ? tramL[0] : metroL[0];
+        conflict({ type: 'brtShare', kind: 'station', ref: sid, x: st.x, y: st.y,
+          msg: '车站「' + st.name + '」的 BRT 站台同时被' + draft.lines[busL[0]].name + '（公交）与' + draft.lines[other].name + '（' + M.sysName(draft.lines[other]) + '）使用',
+          how: 'BRT 站台是封闭站台（屏蔽门、闸机、专用通道与水平登乘），票务体系只服务公交，不能与其他制式同站换乘。把' + M.sysName(draft.lines[other]) + '改到相邻 100–500 m 另设一站（步行换乘照常计费），或把本站降为「大型」普通公交站。',
+          fixes: [{ label: '把' + draft.lines[other].name + '移出本站', op: 'removeStation', station: sid },
+                  { label: '本站降为大型公交站', op: 'stationSize', station: sid, value: 'L' }] });
       }
       // ④ 电车与电车：站台不在同一平面才能同站换乘（公交不参与此校验——都是地面站、可共站）
       const xferOK = tramL.some(function (l) { const cfg = draft.lines[l] && M.cfgOf(draft.lines[l]); return cfg && cfg.sameStationTransfer; });
