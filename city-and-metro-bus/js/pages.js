@@ -662,17 +662,40 @@
     }
     for (const t of trains) {
       const rt = t.rt, w = t.w, A = C.stations[w.a], B = C.stations[w.b];
-      const minCars = rt.cars, limiting = rt.stIds.filter(function (sid) { return mc.carsBySize[C.stations[C.sIndex.get(sid)].size] === minCars; });
-      const atMax = w.freq >= mc.fMax - 0.5;
+      // v3.63：本诊断原本按地铁写死——用 CFG.metro.carsBySize 找「限制编组的最小站」，再读它的 size。
+      // 有轨电车（每档 2/3/4 节）与公交（每档都是 1 辆）的车数不在这张表里，limiting 会是空数组，
+      // limiting[0] === undefined → C.stations[undefined].size 抛错，整个站详情页变成「无法显示」。
+      // 这类站在存档里有真实客流、线路一拥挤才会触发，所以开局全新图永远碰不到。
+      // 现在按每条线自己的制式表算；没有「加长编组」空间的制式（公交、电车）不给这个按钮，改提示加密班次/平行线。
+      const sys = M.sysOf(rt.line), lcfg = M.cfgOf(rt.line);
+      const carTab = sys === 'metro' ? mc.carsBySize : (lcfg.carsBySize || mc.carsBySize);
+      const sizeNm2 = function (sz) { return M.sizeText({ sys: sys }, sz); };
+      const fMax = lcfg.fMax || mc.fMax;
+      const minCars = rt.cars;
+      // 只把「车数确实受站台限制、且升级能加长」的车站列为瓶颈；逐个判空，避免坏引用把整页带崩
+      const limiting = rt.stIds.filter(function (sid) {
+        const cs = C.stations[C.sIndex.get(sid)];
+        return cs && carTab[cs.size] != null && carTab[cs.size] === minCars;
+      });
+      const maxCars = Math.max.apply(null, Object.keys(carTab).map(function (sz) { return carTab[sz]; }));
+      const canLengthen = limiting.length > 0 && minCars < maxCars;
+      const firstStation = canLengthen ? C.stations[C.sIndex.get(limiting[0])] : null;
+      const atMax = w.freq >= fMax - 0.5;
       const helpsHere = limiting.indexOf(id) >= 0;
       const segRef = rt.segRefs[w.leg];
       const locate = h('button', { class: 'btn sm', onclick: function () { self.flyTo((A.x + B.x) / 2, (A.y + B.y) / 2, Math.max(self.R.cam.zoom, 20)); if (segRef) self.select({ kind: 'seg', id: segRef.id }); } }, '定位瓶颈区间');
-      const lengthen = minCars < 8 ? h('button', { class: 'btn sm primary', onclick: function () {
+      const lengthen = canLengthen ? h('button', { class: 'btn sm primary', onclick: function () {
         g.edit(function (n) { for (const sid of limiting) if (n.stations[sid]) n.stations[sid].size = next(n.stations[sid].size); });
-        self.toast('已在草案中升级 ' + limiting.length + ' 座车站，' + rt.line.name + ' 可加长到 ' + mc.carsBySize[next(C.stations[C.sIndex.get(limiting[0])].size)] + ' 节编组', 'info');
-      } }, '加长编组：升级 ' + limiting.length + ' 座' + mc.sizeName[C.stations[C.sIndex.get(limiting[0])].size] + '车站') : null;
-      item('bad', '列车运力不足 · ' + rt.label, A.name + '—' + B.name + ' 区间工作日' + (w.p === 0 ? '早' : '晚') + '高峰断面约 ' + U.fmtInt(w.load) + ' 人/时，超过运力 ' + U.fmtInt(w.capH) + ' 人/时（' + U.fmtNum(w.freq, 1) + ' 列/时' + (atMax ? '，已达发车上限' : '') + '，' + minCars + ' 节编组）。' +
-        (minCars < 8 ? '编组受沿线最小车站限制，' + (helpsHere ? '本站是限制编组的车站之一，需与其余 ' + (limiting.length - 1) + ' 座同时升级。' : '只升级本站不能解决，需要升级限制编组的车站。') : '已是最长编组，只能修建平行线路分流。'), [locate, lengthen, divert]);
+        const toSz = firstStation ? next(firstStation.size) : null;
+        self.toast('已在草案中升级 ' + limiting.length + ' 座车站，' + rt.line.name + ' 可加长到 ' + (carTab[toSz] || minCars) + ' 编组', 'info');
+      } }, '加长编组：升级 ' + limiting.length + ' 座' + (firstStation ? sizeNm2(firstStation.size) : '') + '车站') : null;
+      const unit = sys === 'metro' ? ' 节编组' : ' 辆';
+      const advice = canLengthen
+        ? ('编组受沿线最小车站限制，' + (helpsHere ? '本站是限制编组的车站之一，需与其余 ' + (limiting.length - 1) + ' 座同时升级。' : '只升级本站不能解决，需要升级限制编组的车站。'))
+        : (sys === 'bus' ? '公交每站只停 1 辆，无法加长；加密班次或增设平行线路分流。'
+          : sys === 'tram' ? '电车编组受服务等级限制，升级车站不能加长；加密班次或增设平行线路分流。'
+          : '已是最长编组，只能修建平行线路分流。');
+      item('bad', '列车运力不足 · ' + rt.label, A.name + '—' + B.name + ' 区间工作日' + (w.p === 0 ? '早' : '晚') + '高峰断面约 ' + U.fmtInt(w.load) + ' 人/时，超过运力 ' + U.fmtInt(w.capH) + ' 人/时（' + U.fmtNum(w.freq, 1) + ' 列/时' + (atMax ? '，已达发车上限' : '') + '，' + minCars + unit + '）。' + advice, [locate, lengthen, divert]);
     }
     return box;
   };
