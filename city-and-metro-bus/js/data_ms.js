@@ -154,15 +154,17 @@
       { id: 'zpg', name: '郑蒲港新区', streets: ['姥桥镇', '白桥镇'], open: 2012, plan: 'port',
         note: '2012 年设立，长江北岸的万吨级深水港区，2014 年 12 月一期开港。' },
       // 邻市（图内但不属于马鞍山的建设范围）
-      { id: 'nj', name: '南京（境外）', district: ['浦口区', '玄武区', '鼓楼区', '建邺区', '雨花台区', '栖霞区', '秦淮区', '江宁区', '溧水区', '高淳区'], open: null, empty: true,
-        lockNote: '南京市，不属于马鞍山的建设范围' },
+      // v3.59：改为 passOnly（与武汉图的孝感、深圳图的东莞·惠州同一套）：线路可以穿过，但不能设站。
+      // 这样改走线时可以把线路拉过邻市，只有剧本自带的接驳口 / 既有站留在那里
+      { id: 'nj', name: '南京（境外）', district: ['浦口区', '玄武区', '鼓楼区', '建邺区', '雨花台区', '栖霞区', '秦淮区', '江宁区', '溧水区', '高淳区'], open: null, empty: true, passOnly: true,
+        lockNote: '南京市，不属于马鞍山的建设范围：线路可以穿过，不能设站' },
       // 鸠江区仍列出，但沈巷镇已按街道名称归入和县的「hxs」片区（街道优先于区县）
-      { id: 'wh', name: '芜湖（境外）', district: ['镜湖区', '鸠江区', '弋江区', '无为市'], open: null, empty: true,
-        lockNote: '芜湖市，不属于马鞍山的建设范围（沈巷镇除外，本图归和县）' },
-      { id: 'hf', name: '合肥（境外）', district: ['巢湖市', '肥东县'], open: null, empty: true,
-        lockNote: '合肥市，不属于马鞍山的建设范围' },
-      { id: 'cz', name: '滁州（境外）', district: ['全椒县'], open: null, empty: true,
-        lockNote: '滁州市，不属于马鞍山的建设范围' },
+      { id: 'wh', name: '芜湖（境外）', district: ['镜湖区', '鸠江区', '弋江区', '无为市'], open: null, empty: true, passOnly: true,
+        lockNote: '芜湖市，不属于马鞍山的建设范围：线路可以穿过，不能设站（沈巷镇除外，本图归和县）' },
+      { id: 'hf', name: '合肥（境外）', district: ['巢湖市', '肥东县'], open: null, empty: true, passOnly: true,
+        lockNote: '合肥市，不属于马鞍山的建设范围：线路可以穿过，不能设站' },
+      { id: 'cz', name: '滁州（境外）', district: ['全椒县'], open: null, empty: true, passOnly: true,
+        lockNote: '滁州市，不属于马鞍山的建设范围：线路可以穿过，不能设站' },
     ],
     defaultRegion: { id: 'outer', name: '外围地区', open: 2010, plan: 'res', pop: 2.2e6 },
     plans: CM.DATA.plans,

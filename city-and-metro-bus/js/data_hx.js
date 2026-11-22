@@ -103,17 +103,17 @@
       note: '含山县，2027 年属马鞍山，2000 年与和县同属巢湖市。环峰镇是县城（含山中学、昭关北路一带），'
         + '林头是含山经开区所在的工业镇，运漕是裕溪河北岸的古镇水码头，铜闸、陶厂、清溪、仙踪、昭关沿 S105 与淮南铁路铺开。'
         + '巢马高铁从县城以南穿过并设含山站，是本图西北方向的铁路门户。' },
-    // ---- 境外（图内但不属于本图建设范围）----
-    { id: 'cz', name: '滁州全椒（境外）', district: ['全椒县'], open: null, empty: true,
-      lockNote: '滁州市全椒县，不属于和县的建设范围' },
-    { id: 'nj', name: '南京（境外）', district: ['浦口区', '江宁区'], open: null, empty: true,
-      lockNote: '南京市浦口区、江宁区，不属于和县的建设范围；宁和线在高家冲与南京地铁 S3 线换乘' },
+    // ---- 境外（图内但不属于本图建设范围；v3.59 起线路可以穿过，但不能设站）----
+    { id: 'cz', name: '滁州全椒（境外）', district: ['全椒县'], open: null, empty: true, passOnly: true,
+      lockNote: '滁州市全椒县，不属于和县的建设范围：线路可以穿过，不能设站' },
+    { id: 'nj', name: '南京（境外）', district: ['浦口区', '江宁区'], open: null, empty: true, passOnly: true,
+      lockNote: '南京市浦口区、江宁区，不属于和县的建设范围：线路可以穿过，不能设站（宁和线在高家冲与南京地铁 S3 线换乘）' },
     // 沈巷镇已按街道名归入和县的 hx_s 片区（街道优先于区县）
-    { id: 'wh', name: '芜湖（境外）', district: ['鸠江区', '无为市'], open: null, empty: true,
-      lockNote: '芜湖市，不属于和县的建设范围（沈巷镇除外，本图归和县）' },
+    { id: 'wh', name: '芜湖（境外）', district: ['鸠江区', '无为市'], open: null, empty: true, passOnly: true,
+      lockNote: '芜湖市，不属于和县的建设范围：线路可以穿过，不能设站（沈巷镇除外，本图归和县）' },
   ];
   d.regions = regions;
-  d.defaultRegion = { id: 'outer', name: '图外缘', open: null, plan: 'res', pop: 3e5, lockNote: '地图边缘的境外地区，不属于本图建设范围' };
+  d.defaultRegion = { id: 'outer', name: '图外缘', open: null, plan: 'res', pop: 3e5, passOnly: true, lockNote: '地图边缘的境外地区，不属于本图建设范围：线路可以穿过，不能设站' };
   d.plans = base.data.plans;
 
   // ---------- 二、建成区与人口 ----------

@@ -395,6 +395,12 @@
     const g = this.game(), city = g && g.city, c = city ? city.cellAt(w.x, w.y) : -1;
     if (c < 0 || city.landFrac[c] < 0.5 || !city.cellLocked(c)) return null;
     const k = city.lockRegion(c), rg = city.regions[k], f = city.lockState().info[k], yr = city.lockState().year[c];
+    // 市外区域（passOnly，v3.59 起马鞍山/和县各剧本的邻市）：可以穿过，只是不能设站
+    if (rg.passOnly && !city.regionOpen[k]) {
+      const pl = [rg.lockNote || '市外区域：线路可以穿过，不能设站'];
+      pl.push(building ? '轨道可以从这里穿过（地下、地面、高架都可以），车站要设在本市范围内' : '线路可以从这里穿过（地下、地面、高架都可以）');
+      return { title: '🚇 ' + rg.name, lines: pl, bad: !!building };
+    }
     const lines = [city.lockText(c) + ' · 未开放部分约 ' + U.fmtNum(f.n * CFG.CELL_M * CFG.CELL_M / 1e6, 0) + ' km²'];
     if (yr && rg.pop && !city.regionOpen[k]) lines.push('城市人口达到约 ' + U.fmtPeople(rg.pop) + '时可能提前开放');
     if (rg.note) lines.push(rg.note.length > 64 ? rg.note.slice(0, 62) + '…' : rg.note);

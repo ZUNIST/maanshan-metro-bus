@@ -1034,6 +1034,8 @@
   // 区域状态（界面文字）：整片可以建设 / 部分可以建设 / 尚未开放；未开放但被城区包围的规划用地可以建设，开发按参考年份
   City.prototype.regionLockText = function (k) {
     const f = this.lockState().info[k], rg = this.regions[k];
+    // 市外区域（passOnly，v3.59）：整片都不能建设，但线路可以穿过——提示直接说清楚，不写成「尚未开放」
+    if (rg.passOnly) return this.regionOpen[k] ? '已开放' : '线路可以穿过，不能设站';
     if (!f.n) return this.regionOpen[k] || rg.open == null ? '已开放' : '可以建设（规划用地，参考 ' + rg.open + ' 年起开发）';
     // 已开放、但与连片城区隔开（不能建设的部分只因尚未连通）
     if (this.regionOpen[k]) {
