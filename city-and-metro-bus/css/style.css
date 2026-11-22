@@ -1346,10 +1346,15 @@ button:focus-visible, [role="option"]:focus-visible, [role="tab"]:focus-visible,
    ====================================================================== */
 .pill.gone { display: none !important; }
 .ptabs { position: sticky; top: -12px; z-index: 3; display: flex; gap: 2px; padding: 3px; margin: -2px 0 10px; border-radius: 12px; background: var(--surface-3); box-shadow: 0 6px 10px -8px rgba(0, 0, 0, 0.18); }
-.ptabs button { flex: 1 1 0; min-width: 0; border: 0; background: transparent; padding: 6px 4px; border-radius: 9px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; transition: background .18s, color .18s, box-shadow .2s; white-space: nowrap; }
+.ptabs button { flex: 1 1 auto; min-width: max-content; border: 0; background: transparent; padding: 6px 4px; border-radius: 9px; cursor: pointer; color: var(--muted); font-weight: 600; font-size: 12.5px; display: inline-flex; align-items: center; justify-content: center; gap: 5px; transition: background .18s, color .18s, box-shadow .2s; white-space: nowrap; }
 .ptabs button .ico { width: 15px; height: 15px; }
 .ptabs button:hover { color: var(--text); }
 .ptabs button.on { background: var(--surface-solid); color: var(--accent); box-shadow: var(--shadow-sm); }
+/* 标签放不下时换成两行（v3.60）：每行 --tab-per 个、行内均分，按钮永远不窄于文字 */
+.ptabs.wrap { flex-wrap: wrap; row-gap: 3px; }
+.ptabs.wrap button { flex: 1 1 calc(100% / var(--tab-per, 3) - 6px); max-width: 100%; }
+/* 量自然宽度用：只量一瞬，同步摘掉（见 pages.js 的 fitTabs） */
+.ptabs.measure button { flex: 0 0 auto; }
 .fin-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
 .fin-cards .stat { padding: 8px 9px; }
 .fin-cards .stat .v { font-size: 14.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

@@ -1532,7 +1532,30 @@
   UI.prototype.pageTabs = function (tabs, cur, onPick) {
     const bar = h('div', { class: 'ptabs', role: 'tablist' });
     for (const t of tabs) bar.appendChild(h('button', { class: t[0] === cur ? 'on' : '', role: 'tab', 'aria-selected': t[0] === cur ? 'true' : 'false', 'data-silent': '1', onclick: function () { if (t[0] !== cur) { snd2('soft'); onPick(t[0]); } } }, CM.icon(t[2], 15), h('span', null, t[1])));
+    this.fitTabs(bar, tabs.length);
     return bar;
+  };
+  // 标签栏排版（v3.60）：任务页同时有「铁路经营权」与「合同」时是 5 个标签，右侧面板只有 368 px，
+  // 单行等分会把文字挤出按钮、图标压在字上（中文就已经重叠，英文标签更长）。这里分两步：
+  // ① 单行时按钮按内容宽度分配剩余空间（min-width: max-content），不再强行等分，短标签不会挤压长标签；
+  // ② 内容实在放不下时换成两行，每行 ceil(n/2) 个、行内均分。视口或文案变化时由 ResizeObserver 重判。
+  UI.prototype.fitTabs = function (bar, n) {
+    if (n > 1) bar.style.setProperty('--tab-per', Math.max(2, Math.ceil(n / 2)));
+    const apply = function () {
+      if (!bar.isConnected || !bar.clientWidth) return;
+      const had = bar.classList.contains('wrap');
+      // 量「每个标签按内容宽度排」需要的总宽：暂时挂上 measure（同步量、同步摘掉，不会绘制出中间态），
+      // 这样既不受等分取整的影响，也不用把宽度算成常量。
+      bar.classList.add('measure');
+      let need = (bar.children.length - 1) * 2;
+      for (const b of bar.children) need += b.getBoundingClientRect().width;
+      bar.classList.remove('measure');
+      const wrap = need > bar.clientWidth - 6 + 1;   // clientWidth 含左右各 3px 内边距
+      if (wrap !== had) bar.classList.toggle('wrap', wrap);
+    };
+    apply();
+    if (window.ResizeObserver) new ResizeObserver(apply).observe(bar);
+    else requestAnimationFrame(apply);
   };
   const snd2 = function (n) { if (CM.Sound) CM.Sound.play(n); };
   // 顶栏「资金」打开的右侧面板：收支、经济、财政、融资（v2.7：票价单独在地铁芯的「票价管理」调，收支页有入口）
