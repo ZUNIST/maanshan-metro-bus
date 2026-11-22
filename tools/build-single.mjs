@@ -43,6 +43,7 @@ const escAttr = s => s.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
 const html = inlineLogos(await readFile(path.join(root, 'index.html'), 'utf8'));
 const geo = [];            // { key, file, text }
+const sources = {};        // src -> 内联前的源码（给 Blob worker 拼线程脚本用）
 let inlineCount = 0;
 let bytes = 0;
 
@@ -64,6 +65,7 @@ for (const t of tags) {
   }
   bytes += Buffer.byteLength(text);
   inlineCount++;
+  sources[src] = text;
   result += '  <script data-src="' + escAttr(src) + '">\n' + esc(text) + '\n  </script>\n';
 }
 result += html.slice(last);
@@ -78,9 +80,30 @@ result = result.replace(/[ \t]*<link rel="icon"[^>]*>/,
   '  <link rel="icon" href="data:image/png;base64,' + icon.toString('base64') + '">');
 
 // ---- 3. 地理数据块 + 构建标记 ----
-// 告诉引擎「我在单文件里」：render.js 据此跳过依赖 importScripts 的后台绘制线程
+// v3.62：单文件版也用后台线程绘制地面块。tile-worker.js 原本靠 importScripts 逐个取文件，
+// 单个 HTML 里没有这些文件；这里把线程需要的 9 个脚本 + worker 自身拼成一段源码，运行时用 Blob URL
+// 起 Worker。地理数据不走 importScripts，由主线程 postMessage 传过去（msg.geo）。
+// 顺序必须和 tile-worker.js 原来的 importScripts 一致：
+//   util/config/accessibility → self.CM.DATA = {} → geo/city/render/terminals/sites/scenery
+// render.js 在文件顶部就取了 `const D = CM.DATA`，DATA 必须先建好，否则线程里一画地面就报
+// 「Cannot read properties of undefined (reading 'airport')」。
+const WORKER_EARLY = ['js/util.js', 'js/config.js', 'js/accessibility.js'];
+const WORKER_LATE = ['js/geo.js', 'js/city.js', 'js/render.js', 'js/terminals.js', 'js/sites.js', 'js/scenery.js'];
+const workerGlue = (await readFile(path.join(root, 'js/tile-worker.js'), 'utf8')).split(/\r?\n/)
+  .filter((l) => !/^\s*importScripts\(/.test(l) && !/^\s*self\.CM\.DATA\s*=/.test(l)).join('\n');
+let workerSrc = 'self.window = self;\n';
+for (const f of WORKER_EARLY.concat(WORKER_LATE)) {
+  if (!sources[f]) throw new Error('后台线程缺少脚本：' + f);
+  workerSrc += '\n// ===== ' + f + ' =====\n' + sources[f] + '\n';
+  if (f === 'js/accessibility.js') workerSrc += '\nself.CM.DATA = {};\n';
+}
+workerSrc += '\n// ===== tile-worker.js =====\n' + workerGlue + '\n';
+bytes += Buffer.byteLength(workerSrc);
+const workerLiteral = esc(JSON.stringify(workerSrc)).replace(/\u2028/g, '\\u2028').replace(/\u2029/g, '\\u2029');
+// 告诉引擎「我在单文件里」并提供 Blob worker 源码；取不到源码时 render.js 仍会退回主线程绘制
 result = result.replace('<meta charset="utf-8">',
-  '<meta charset="utf-8">\n  <script>window.CM = window.CM || {}; window.CM.SINGLE_FILE = true;</script>');
+  '<meta charset="utf-8">\n  <script>window.CM = window.CM || {}; window.CM.SINGLE_FILE = true;</script>\n' +
+  '  <script>window.CM.SINGLE_WORKER_SRC = ' + workerLiteral + ';</script>');
 let geoBlock = '\n  <!-- 地理数据（按需载入）：js/maps.js 的 loadGeo 从这里取文本执行 -->\n';
 for (const g of geo) {
   bytes += Buffer.byteLength(g.text);

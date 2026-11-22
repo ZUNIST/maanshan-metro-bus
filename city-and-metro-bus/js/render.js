@@ -110,11 +110,20 @@
   // 地面块与总览图在独立线程绘制，主线程只贴图。线程按城市版本同步数据（只在真正要画新块时才同步，跳月期间没有开销）；
   // 线程不可用或出错时退回主线程的分帧绘制（groundChunkGen），画面结果相同
   function TilePool(R) { this.R = R; this.list = null; this.off = false; this.pending = new Map(); this.ep = 0; this.sent = {}; this.geo = null; this.ovBusy = false; this.ovAt = -1e9; }
+  // 单文件版（v3.62）：没有 js/tile-worker.js 可取，构建时把线程需要的脚本拼成字符串放进
+  // CM.SINGLE_WORKER_SRC，这里用 Blob URL 起同一个 worker；地理数据改为 postMessage 传过去。
+  TilePool.prototype.workerUrl = function () {
+    if (!this._workerUrl) {
+      if (CM.SINGLE_FILE) {
+        if (!CM.SINGLE_WORKER_SRC) throw new Error('单文件版缺少后台线程脚本');
+        this._workerUrl = URL.createObjectURL(new Blob([CM.SINGLE_WORKER_SRC], { type: 'text/javascript' }));
+      } else this._workerUrl = 'js/tile-worker.js';
+    }
+    return this._workerUrl;
+  };
   TilePool.prototype.ready = function () {
     if (this.off) return false;
-    // 单文件版（tools/build-single.mjs）：地图数据内嵌，tile-worker.js 依赖 importScripts 逐个取文件，
-    // 在单个 html 里拿不到，直接走主线程绘制，不去发那个注定失败的请求。
-    if (CM.SINGLE_FILE) { this.off = true; return false; }
+    if (CM.SINGLE_FILE && !CM.SINGLE_WORKER_SRC) { this.off = true; return false; }
     if (typeof Worker === 'undefined' || typeof OffscreenCanvas === 'undefined' || typeof Path2D === 'undefined' || typeof createImageBitmap === 'undefined') { this.off = true; return false; }
     if (this.list && this.geo === CM.GEO) return true;
     this.stop();
@@ -122,14 +131,16 @@
       const cores = navigator.hardwareConcurrency || 2, n = (navigator.deviceMemory <= 4 || matchMedia('(pointer:coarse)').matches) ? 1 : cores >= 8 ? 2 : 1, id = CM.mapId, mp = CM.curMap ? CM.curMap() : null;
       const data = { landmarks: D.landmarks, runways: D.runways, airport: D.airport, reclaim: (D.reclaim || []).map(function (r) { return { id: r.id, year: r.year, name: r.name }; }), hsrYear: D.hsrYear, railYears: D.railYears, walls: D.walls };
       const regionalRailYears = D.railByRegion ? CM.Geo.rail.map(function (r) { return r.year || 0; }) : null;
-      // geoFile 只保留文件名（去掉 ?v= 完整性参数）：线程里 importScripts 相对 js/ 取同一个文件
-      const geoFile = id === 'gz' ? 'geo_gz.js' : mp && mp.geo.file ? CM.geoAssetPath(mp.geo).split('/').pop().split('?')[0] : null;
+      // geoFile 只保留文件名（去掉 ?v= 完整性参数）：线程里 importScripts 相对 js/ 取同一个文件。
+      // 单文件版没有可请求的文件，直接把主线程已载入的 geo 对象 postMessage 给线程。
+      const geoFile = CM.SINGLE_FILE ? null : id === 'gz' ? 'geo_gz.js' : mp && mp.geo.file ? CM.geoAssetPath(mp.geo).split('/').pop().split('?')[0] : null;
       // 派生剧本共用基剧本的地理文件（geo_ms.js → GEOS.ms），线程按文件名回填真实键，见 tile-worker.js
       const geoKey = geoFile ? ((/^geo_([A-Za-z0-9_]+)\.js$/.exec(geoFile) || [])[1] || null) : null;
       const msg = { type: 'map', regionalRailYears: regionalRailYears, data: data, cfg: { W: CFG.W, H: CFG.H, START: CFG.START }, region: mp ? mp.region : null, geoId: id, geoKey: geoKey, geoFile: geoFile, geo: geoFile ? null : CM.GEO };
       this.list = [];
+      const wUrl = this.workerUrl();
       for (let i = 0; i < n; i++) {
-        const w = new Worker('js/tile-worker.js'), slot = { w: w, n: 0 };
+        const w = new Worker(wUrl), slot = { w: w, n: 0 };
         w.onmessage = (e) => this.done(slot, e.data);
         w.onmessageerror = () => this.fail('工作线程消息无法解码');
         w.onerror = (e) => { if (e && e.preventDefault) e.preventDefault(); this.fail((e && e.message) || '工作线程出错'); };
