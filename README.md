@@ -3,6 +3,9 @@
 一款纯前端的城市轨道交通模拟游戏。v3.50 起已把 [VinsonFung/city-and-metro](https://github.com/VinsonFung/city-and-metro) 原作者的 **v2.9.5** 更新合并进来，并保留下列马鞍山分支内容。
 新增**马鞍山**地图（含山、和县、花山、雨山、博望、当涂全域，416 × 328 格 / 约 104 × 82 km），并加入**公共汽车**制式。
 
+> **在线试玩：<https://maanshan-metro-bus-v353.app.workbuddy.host/?sharecode=ECMH5POU33>**（网页版，无需安装；当前线上为 v3.61）
+> 离线版请下载 Release 里的 zip，解压后双击 `index.html`；也可以直接用目录里的单文件 HTML。
+
 > **这是社区修改版，不是官方版本。严禁商业使用。**
 >
 > 当前版本 **v3.61**（2027 / 2030 / 和县剧本恢复后台线程绘制，拖动与缩放不再卡）
