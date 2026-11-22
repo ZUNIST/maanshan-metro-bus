@@ -1,7 +1,7 @@
 // 公交现实规则测试（v-bus 规则修订）：
 //   ① 公交只有地面线路/车站（地下/高架段与站台报 busLevel 冲突）
 //   ② 公交免拆迁（沿路段与车站不计 demolition）
-//   ③ 公交不与地铁/有轨同站换乘（tramShare/busShare），但公交之间可共站
+//   ③ 同站换乘（v3.55）：普通公交站可与公交/有轨/地铁同站；BRT 站台（XL）只与其他公交同站
 //   ④ 公交占路影响车流：沿路段按等级折减道路容量（laneTake），独立路基段不影响
 // 用法：node scripts/test-bus-rules.mjs [地图 id，默认 ms]
 import { readFile } from 'node:fs/promises';
@@ -91,9 +91,36 @@ assert.equal(B.noDemolition, true, 'config 公交 noDemolition');
 }
 ok('② 公交免拆迁：公交站与沿路段不计拆迁，地铁不变');
 
-// ---- ③ 换乘隔离 ----
+// ---- ③ 同站换乘（v3.55 规则） ----
 {
-  // 公交 + 地铁共站 → 报冲突
+  const shared = function (busSize) {
+    // 造一条有轨线，中途站 brand 为指定规模的公交站，让公交接入该站
+    const tnet = M.clone(g.net), lidT = M.newLine(tnet, '测试有轨', 'tram');
+    const tids = [];
+    let prev = null;
+    for (let i = 0; i < 4; i++) {
+      const p = nudge(250 + i * 3, 172);
+      const sid = M.addStation(tnet, p[0], p[1], { size: 'M', type: 'surface' }, city);
+      tids.push(sid);
+      if (prev) M.addSegment(tnet, lidT, prev, sid, [], 'surface');
+      prev = sid;
+    }
+    const mid = tids[1];
+    tnet.stations[mid].size = busSize;
+    const lidB = M.newLine(tnet, '测试公交', 'bus');
+    const bp = nudge(tnet.stations[mid].x + 0.01, 170);
+    const bA = M.addStation(tnet, bp[0], bp[1], { size: 'S', type: 'surface' }, city);
+    M.addSegment(tnet, lidB, bA, mid, [], 'surface');
+    return M.evaluate(tnet, g.net, city, year);
+  };
+  // 普通公交站（M）可与有轨同站，不再报冲突
+  const evM = shared('M');
+  assert.ok(!evM.conflicts.some(c => c.type === 'brtShare' || c.type === 'tramShare' || c.type === 'busShare'),
+    '普通公交站与有轨同站不报冲突');
+  // BRT 站台（XL）与有轨同站 → 报 brtShare
+  const evXL = shared('XL');
+  assert.ok(evXL.conflicts.some(c => c.type === 'brtShare'), 'BRT 站台与有轨同站报 brtShare');
+  // 轻轨类（含公交）与地铁仍不能同站：规则①（站台高度/闸机/票务不同），v3.55 只放开了公交↔有轨/公交↔公交
   const { net, ids } = busLine('bus', 'B1');
   const mid = ids[Math.floor(ids.length / 2)];
   const lidM = M.newLine(net, '测试地铁', 'metro');
@@ -102,29 +129,11 @@ ok('② 公交免拆迁：公交站与沿路段不计拆迁，地铁不变');
     const mA = M.addStation(net, far[0], far[1], { size: 'M', type: 'surface' }, city);
     M.addSegment(net, lidM, mA, mid, [], 'surface');
     const ev = M.evaluate(net, g.net, city, year);
-    assert.ok(ev.conflicts.some(c => c.type === 'tramShare'), '公交与地铁共站报 tramShare');
+    // TODO(v3.55 公告)：公告承诺「公交站可与地铁同站换乘」，但 metro.js 规则①把公交算进 lightL 一并拦下，
+    // 这里按当前实现断言。放开前需同步改规则①（仅 tramL+metroL 拦截，公交交规则②按 BRT 与否判定）。
+    assert.ok(ev.conflicts.some(c => c.type === 'tramShare'), '公交站与地铁同站目前仍报 tramShare（与 v3.55 公告有出入，待修）');
   }
-  // 公交 + 电车共站 → 报 busShare
-  const tnet = M.clone(g.net), lidT = M.newLine(tnet, '测试有轨', 'tram');
-  const base = nudge(250, 170), tids = [];
-  let prev = null;
-  for (let i = 0; i < 4; i++) {
-    const p = nudge(250 + i * 3, 172);
-    const sid = M.addStation(tnet, p[0], p[1], { size: 'M', type: 'surface' }, city);
-    tids.push(sid);
-    if (prev) M.addSegment(tnet, lidT, prev, sid, [], 'surface');
-    prev = sid;
-  }
-  const bnet = M.clone(tnet), lidB = M.newLine(bnet, '测试公交', 'bus');
-  const bp1 = nudge(tids[1] === undefined ? 260 : tnet.stations[tids[1]].x + 0.01, 170);
-  // 让公交线接入电车的中间站
-  if (tids[1] != null) {
-    const bA = M.addStation(bnet, bp1[0], bp1[1], { size: 'M', type: 'surface' }, city);
-    M.addSegment(bnet, lidB, bA, tids[1], [], 'surface');
-    const ev = M.evaluate(bnet, g.net, city, year);
-    assert.ok(ev.conflicts.some(c => c.type === 'busShare'), '公交与有轨共站报 busShare');
-  }
-  // 两条公交共站 → 允许（无 busShare / tramShare 因共站）
+  // 两条公交共站 → 允许
   const b2 = M.clone(g.net), l1 = M.newLine(b2, '公交甲', 'bus'), l2 = M.newLine(b2, '公交乙', 'bus');
   const c0 = nudge(250, 170), c1 = nudge(254, 170), c2 = nudge(258, 170);
   assert.ok(c0 && c1 && c2, '共站测试走廊可建站');
@@ -134,9 +143,9 @@ ok('② 公交免拆迁：公交站与沿路段不计拆迁，地铁不变');
   M.addSegment(b2, l1, s0, s1, [], 'surface');
   M.addSegment(b2, l2, s1, s2, [], 'surface');   // 两线共用中间站 s1
   const ev2 = M.evaluate(b2, g.net, city, year);
-  assert.ok(!ev2.conflicts.some(c => c.type === 'busShare' || c.type === 'tramShare'), '两条公交共地面站不报冲突');
+  assert.ok(!ev2.conflicts.some(c => c.type === 'brtShare' || c.type === 'tramShare'), '两条公交共地面站不报冲突');
 }
-ok('③ 换乘隔离：公交↔地铁/有轨禁共站，公交↔公交可共站');
+ok('③ 同站换乘：普通公交站可与有轨/公交同站，BRT 站台只与公交同站，轻轨类↔地铁仍禁');
 
 // ---- ④ 公交占路影响车流 ----
 {

@@ -1,4 +1,4 @@
-// 公共汽车制式测试（v-bus）：三制式枚举、无最小站距、路权等级与速度解耦、
+// 公共汽车制式测试（v-bus）：三制式枚举、无最小站距、路权等级限定速度上限（v3.55）、
 // 车站规模与造价折扣、公交独立命名序列、公交车型、独立票价与三段拆段计费、
 // 仿真网 eBus 标记与 br 里程矩阵、派生线路沿用制式。
 // 用法：node scripts/test-bus.mjs [地图 id，默认 ms]
@@ -38,7 +38,7 @@ assert.equal(M.sysName({ sys: 'bus' }), '公共汽车', '公交显示名');
 assert.equal(M.cfgOf({ sys: 'bus' }), B, '公交配置指向 CFG.bus');
 ok('三制式枚举识别');
 
-// ---- 2. 等级与速度解耦、无最小站距、半径 ----
+// ---- 2. 等级限定速度上限、无最小站距、半径 ----
 assert.equal(M.lineKmh({ sys: 'bus' }), B.defaultSpeed, '公交默认运营速度');
 assert.equal(M.minRadius({ sys: 'bus' }), B.minRadiusM, '公交半径取几何下限（不设实际限制）');
 assert.ok(B.minRadiusM <= 6, '公交半径仅为防退化的几何下限');
@@ -48,7 +48,11 @@ for (const g of B.grades) {
   for (const v of B.speeds) {
     const L = { sys: 'bus', grade: g.id, speed: v };
     assert.equal(M.sysGrade(L).id, g.id, g.id + ' 档位可查');
-    assert.equal(M.lineKmh(L), v, g.id + '@' + v + ' 速度独立');
+    // v3.55：运营速度受路权上限约束（B1 混行 20 / B2 专用道 30 / B3 BRT 40）。
+    // 档位与速度仍是两个独立字段，但 lineKmh 会把超上限的值夹回上限（兼容旧存档里「混行 30」这类值）。
+    const cap = B.speedCap[g.id];
+    assert.ok(cap != null, g.id + ' 有路权速度上限');
+    assert.equal(M.lineKmh(L), Math.min(v, cap), g.id + '@' + v + ' 速度夹到路权上限 ' + cap);
     assert.equal(M.minRadius(L), B.minRadiusM, g.id + ' 半径与档位/速度无关');
     assert.equal(M.carCapOf(L), g.carCap, g.id + ' 每辆定员随档位');
   }
@@ -57,7 +61,7 @@ for (const g of B.grades) {
 assert.equal(M.minRadius({ speed: 80 }), 250, '地铁 80 km/h 半径仍是 250 m');
 assert.equal(M.spacingOf({}), C.CFG.metro.minSpacingM, '地铁站距仍是 100 m');
 assert.equal(M.carsOf({}, 'S'), C.CFG.metro.carsBySize.S, '地铁编组不变');
-ok('等级/速度解耦、无站距下限、地铁不回退');
+ok('等级限定速度上限、无站距下限、地铁不回退');
 
 // ---- 3. 建网：一条公交线（B2 专用道，30 km/h） ----
 C.useMap(mapId);

@@ -171,9 +171,15 @@ ok('③ 站点服务人流量：400/1000 人/h，与线路运力自洽且明显�
   assert.equal(by['bus-early'].ops, maxOps, '早期老车运营成本系数最高');
   assert.ok(by['bus-ac'].ops > by['bus-standard'].ops, '空调车单公里运营费高于普通柴油车');
   assert.ok(by['bus-artic'].ops > by['bus-electric'].ops, '18 米大车单公里成本高于 12 米纯电（人均更低靠 cap）');
-  // 最高速度：后期车型都能跑满 30 km/h 档（车型改动不能卡死速度解锁）
-  for (const m of mdl) if (m.id !== 'bus-early') assert.ok(m.kmh >= 30, m.id + ' 可跑 30 km/h 档');
+  // 最高速度（v3.55）：车型速度按路权分档——混行 20 / 专用道 30 / BRT 40，
+  // 不再是「后期车型一律 ≥30」。车型改动仍不能卡死速度解锁：每档都有车能跑。
   assert.equal(by['bus-early'].kmh, 20, '早期车仅 20 km/h（年代限制）');
+  assert.equal(by['bus-standard'].kmh, 20, '标准混行车 20 km/h');
+  assert.equal(by['bus-ac'].kmh, 30, '空调车可跑专用道 30 km/h');
+  assert.equal(by['bus-artic'].kmh, 30, '铰接车可跑专用道 30 km/h');
+  assert.equal(by['bus-electric'].kmh, 40, '新能源快速公交可跑 BRT 40 km/h');
+  assert.equal(by['bus-brt'].kmh, 40, 'BRT 车可跑 40 km/h');
+  for (const cap of [20, 30, 40]) assert.ok(mdl.some(function (m) { return m.kmh >= cap; }), cap + ' km/h 档有车型可跑');
   assert.equal(F.speedOpen(mapId, 2000, 30, 'bus').ok, true, '2000 年剧本 30 km/h 档仍可用');
   assert.equal(F.speedOpen(mapId, 2027, 30, 'bus').ok, true, '2027 年 30 km/h 档可用');
   // 线路等级的典型定员与车型同量级（名义运力 rt.cap 不能还是旧值）
