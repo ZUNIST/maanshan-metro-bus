@@ -122,8 +122,11 @@
       const cores = navigator.hardwareConcurrency || 2, n = (navigator.deviceMemory <= 4 || matchMedia('(pointer:coarse)').matches) ? 1 : cores >= 8 ? 2 : 1, id = CM.mapId, mp = CM.curMap ? CM.curMap() : null;
       const data = { landmarks: D.landmarks, runways: D.runways, airport: D.airport, reclaim: (D.reclaim || []).map(function (r) { return { id: r.id, year: r.year, name: r.name }; }), hsrYear: D.hsrYear, railYears: D.railYears, walls: D.walls };
       const regionalRailYears = D.railByRegion ? CM.Geo.rail.map(function (r) { return r.year || 0; }) : null;
-      const geoFile = id === 'gz' ? 'geo_gz.js' : mp && mp.geo.file ? CM.geoAssetPath(mp.geo).split('/').pop() : null;
-      const msg = { type: 'map', regionalRailYears: regionalRailYears, data: data, cfg: { W: CFG.W, H: CFG.H, START: CFG.START }, region: mp ? mp.region : null, geoId: id, geoFile: geoFile, geo: geoFile ? null : CM.GEO };
+      // geoFile 只保留文件名（去掉 ?v= 完整性参数）：线程里 importScripts 相对 js/ 取同一个文件
+      const geoFile = id === 'gz' ? 'geo_gz.js' : mp && mp.geo.file ? CM.geoAssetPath(mp.geo).split('/').pop().split('?')[0] : null;
+      // 派生剧本共用基剧本的地理文件（geo_ms.js → GEOS.ms），线程按文件名回填真实键，见 tile-worker.js
+      const geoKey = geoFile ? ((/^geo_([A-Za-z0-9_]+)\.js$/.exec(geoFile) || [])[1] || null) : null;
+      const msg = { type: 'map', regionalRailYears: regionalRailYears, data: data, cfg: { W: CFG.W, H: CFG.H, START: CFG.START }, region: mp ? mp.region : null, geoId: id, geoKey: geoKey, geoFile: geoFile, geo: geoFile ? null : CM.GEO };
       this.list = [];
       for (let i = 0; i < n; i++) {
         const w = new Worker('js/tile-worker.js'), slot = { w: w, n: 0 };
@@ -425,8 +428,12 @@
     }
     if (ready) {
       this.displayedLevel = target;
+      this.stageSince = 0;
       for (const e of staged) e.born = this.time - 1;
-    } else this.stats.lodPreparing = true;
+    } else {
+      this.stats.lodPreparing = true;
+      if (!this.stageSince) this.stageSince = performance.now();
+    }
     this.stats.rasterLevel = this.displayedLevel;
     return this.displayedLevel;
   };
@@ -799,9 +806,19 @@
   Renderer.prototype.evict = function (to, keep) {
     const cap = this.cacheLimit();
     if (this.themeStash && this.cachePx + this.themeStash.px > cap) this.dropThemeStash();
-    if (to == null) { if (this.cachePx <= cap) return; to = cap * 0.8; }
+    if (to == null) {
+      // 档位切换中（v3.61）：交棒前新旧两档的分块必须同时驻留，两者之和本来就超过常态上限。
+      // 按常态上限淘汰会把这一帧刚建好的新档块删掉、下一帧再重画，于是永远凑不齐（画面一直停在旧档），
+      // 缓存也在「删—建」之间来回抖。切换期间放宽到上限的 stageCacheFactor 倍，交棒后再按常态上限收。
+      // 放宽只在切档的头 1.5 秒内有效：连续缩放时不会把内存一路推高
+      const staging = this.stats && this.stats.lodPreparing && this.stageSince && performance.now() - this.stageSince < 1500;
+      const ceiling = staging ? cap * (CFG.perf.stageCacheFactor || 1.75) : cap;
+      if (this.cachePx <= ceiling) return;
+      to = ceiling * 0.8;
+    }
     if (keep == null) keep = this.frame;
-    const cur = this.displayedLevel || this.requestedLevel || 0;
+    // 淘汰顺序以「正在切换到的档位」为准：旧档先丢，新档块留到交棒
+    const cur = this.requestedLevel || this.displayedLevel || 0;
     // 档位距离：同一档 0，相邻一档 1，再远更大；没有档位的（总览、地标精灵）按最远处理
     const gap = function (L) { return L && cur ? Math.abs(Math.log(L / cur)) / Math.LN2 : 9; };
     const all = [];

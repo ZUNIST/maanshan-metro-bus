@@ -13,9 +13,21 @@ self.matchMedia = function () { return {matches:false}; };
   const CFG = CM.CFG, Geo = CM.Geo;
   let R = null, city = null, game = null, LK = null, reclaim = [];
   const initMap = function (m) {
-    if (m.geoFile) importScripts(m.geoFile);
+    // 派生剧本（马鞍山 2027 / 2030、和县 2030）与基剧本共用同一个地理文件：脚本只会写**文件自己**的键
+    // （geo_ms.js → CM.GEOS.ms），按剧本 id 取会拿到 undefined，Geo.init 直接抛错，线程于是退回主线程绘制
+    // ——那几张图拖动、缩放就全靠主线程，卡得明显（v3.61 修）。
+    if (m.geoFile) {
+      CM.GEOS = CM.GEOS || {};          // 线程里没有 geo-index.js，地理文件自己会写这个对象
+      const before = Object.keys(CM.GEOS);
+      importScripts(m.geoFile);
+      if (!CM.GEOS[m.geoId]) {
+        const added = Object.keys(CM.GEOS).filter(function (k) { return before.indexOf(k) < 0; });
+        m.geoKey = added[0] || (/geo_([A-Za-z0-9_]+)\.js/.exec(m.geoFile) || [])[1] || null;
+      }
+    }
     CM.mapId = m.geoId;
-    CM.GEO = m.geoFile ? CM.GEOS[m.geoId] : m.geo;
+    CM.GEO = m.geoFile ? (CM.GEOS[m.geoId] || CM.GEOS[m.geoKey] || null) : m.geo;
+    if (!CM.GEO) throw new Error('地理数据缺失：' + (m.geoFile || m.geoId));
     for (const k of Object.keys(CM.DATA)) delete CM.DATA[k];
     Object.assign(CM.DATA, m.data);
     Object.assign(CFG, m.cfg);
