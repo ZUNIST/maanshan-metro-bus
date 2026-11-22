@@ -243,7 +243,7 @@
   Renderer.prototype.cacheLimit = function () {
     const memory = Number(navigator.deviceMemory) || 8;
     const touch = window.matchMedia && window.matchMedia('(pointer: coarse)').matches;
-    return Math.min(CFG.perf.cacheMaxPx, memory <= 2 ? 8e6 : memory <= 4 || touch ? 12e6 : CFG.perf.cacheMaxPx);
+    return memory <= 2 ? 8e6 : memory <= 4 || touch ? 14e6 : CFG.perf.cacheMaxPx;
   };
   Renderer.prototype.adaptDetail = function (dt) {
     const d = this.detail, elapsed = Math.min(0.1, dt || 1 / 60);
@@ -767,7 +767,6 @@
     }
     this.syncMetroMask();
     if (!city.dirty.size) return;
-    this.cancelIsoJob();
     const keys = new Set(), ikeys = new Set(), self = this;
     city.dirty.forEach(function (c) {
       const i = c % city.W, j = (c / city.W) | 0;
@@ -788,19 +787,27 @@
       if (pending) pending.stale = true;
     });
     ikeys.forEach(function (k) { const b = iso.get(k); if (b) b.stale = true; });
+    // 正在生成的建筑块不再中途丢弃（v3.58）：城市每月有一点变化就会调到这里，以前一律 cancelIsoJob，
+    // 生成到一半的块整个白画——跑着时间放大缩小时，这一块可能永远画不完。改为让它画完、再标为过期重画
+    if (this.isoJob && ikeys.has(this.isoJob.key)) this.isoJob.stale = true;
     this.overviewStale = true;
     this.heatKey = '';
   };
   // to：淘汰到的像素数；keep：used 不小于它的块保留（默认只保留本帧用到的）
+  // v3.58：淘汰顺序先看「离当前档位有多远」，再看最久未用。以前纯按 LRU，刚放大一档时上一档
+  // （缩放往回走时马上要用的）最先被丢掉，于是「缩回去再放回来」又得全部重画。
   Renderer.prototype.evict = function (to, keep) {
     const cap = this.cacheLimit();
     if (this.themeStash && this.cachePx + this.themeStash.px > cap) this.dropThemeStash();
     if (to == null) { if (this.cachePx <= cap) return; to = cap * 0.8; }
     if (keep == null) keep = this.frame;
+    const cur = this.displayedLevel || this.requestedLevel || 0;
+    // 档位距离：同一档 0，相邻一档 1，再远更大；没有档位的（总览、地标精灵）按最远处理
+    const gap = function (L) { return L && cur ? Math.abs(Math.log(L / cur)) / Math.LN2 : 9; };
     const all = [];
-    this.ground.forEach(function (e, k) { all.push([e, k, 'g']); });
-    this.iso.forEach(function (e, k) { all.push([e, k, 'i']); });
-    all.sort(function (a, b) { return a[0].used - b[0].used; });
+    this.ground.forEach(function (e, k) { all.push([e, k, 'g', gap(e.lvl)]); });
+    this.iso.forEach(function (e, k) { all.push([e, k, 'i', gap(e.lvl || +k.replace(/^i/, '').split(':')[0])]); });
+    all.sort(function (a, b) { return b[3] - a[3] || a[0].used - b[0].used; });
     for (const it of all) {
       if (this.cachePx <= to) break;
       if (it[0].used >= keep) continue;
@@ -1684,7 +1691,10 @@
 
   // ---------------- 等距建筑分块 ----------------
   Renderer.prototype.isoChunkGeom = function (lvl, ci, cj) {
-    const C = CHUNK_PX / lvl / 1.41421356 | 0 || 1;
+    // v3.58：从 512/lvl/√2 放宽到 512/lvl（并封顶到 24 格）。同样的视野里建筑分块少 2.5–3 倍，
+    // 建筑缓存占用降四成左右——上一档的块才留得住，缩放来回时能直接复用而不必重画。
+    // 分块越大，单块生成越久（同一时间只画一块），所以低档位封顶，避免一块画好几帧。
+    const C = Math.min(24, CHUNK_PX / lvl | 0) || 1;
     return C;
   };
   Renderer.prototype.isoChunkGen = function* (lvl, ci, cj, C) {
@@ -1695,7 +1705,7 @@
     for (let j = j0; j < Math.min(H, j0 + C) && waterOnly; j++) for (let i = i0; i < Math.min(W, i0 + C); i++) {
       const L = city.lu[j * W + i]; if (L !== LU.WATER && L !== LU.LANDMARK) { waterOnly = false; break; }
     }
-    if (waterOnly) return { cv: makeCanvas(1, 1), ax: 0, ay: 0, px: 1, empty: true };
+    if (waterOnly) return { cv: makeCanvas(1, 1), lvl: lvl, ax: 0, ay: 0, px: 1, empty: true };
     let hasHill = false;
     for (let j = j0; j < Math.min(H, j0 + C) && !hasHill; j++) for (let i = i0; i < Math.min(W, i0 + C); i++) if (city.lu[j * W + i] === LU.HILL) { hasHill = true; break; }
     const pad = hasHill ? 2.8 * s : 4;   // 山峰会越出所在格
@@ -1726,7 +1736,7 @@
       }
     }
     if (!drew) cv.width = cv.height = 1;
-    return { cv: cv, ax: (i0 - j0) * ISO[0] * s + ox, ay: (i0 + j0) * ISO[2] * s + oy, px: cv.width * cv.height, empty: drew === 0 };
+    return { cv: cv, lvl: lvl, ax: (i0 - j0) * ISO[0] * s + ox, ay: (i0 + j0) * ISO[2] * s + oy, px: cv.width * cv.height, empty: drew === 0 };
   };
   // 已建成地标中心所在的格不再放普通建筑（由地标模型占用）
   Renderer.prototype.isLmCenter = function (c) {
@@ -1752,7 +1762,7 @@
     const ox = -minX + padd, oy = -minY + padd;
     const pj = function (x, y, h) { return [(x - y) * ISO[0] * s + ox, (x + y) * ISO[2] * s + oy - h * HSF * s]; };
     try { this.isoLandmark(ctx, pj, lm, s); } catch (err) { console.error(err); }
-    e = { cv: cv, ax: (lm.x - lm.y) * ISO[0] * s + ox, ay: (lm.x + lm.y) * ISO[2] * s + oy, px: cv.width * cv.height, used: this.frame, born: this.warmUntil ? this.time - 1 : this.time, stale: false, siteVersion: siteVersion };
+    e = { cv: cv, lvl: lvl, ax: (lm.x - lm.y) * ISO[0] * s + ox, ay: (lm.x + lm.y) * ISO[2] * s + oy, px: cv.width * cv.height, used: this.frame, born: this.warmUntil ? this.time - 1 : this.time, stale: false, siteVersion: siteVersion };
     const old = this.iso.get(key); if (old) this.cachePx -= old.px;
     this.iso.set(key, e); this.cachePx += e.px;
     return e;
@@ -3221,6 +3231,9 @@
     if (this.overview) {
       ctx.drawImage(this.overview, 0, 0, CFG.W, CFG.H);
     }
+    // 正在等更粗的一档（缩小视角）：新露出来的区域不再按旧档位现画。以前缩小一档时，视野变大后的
+    // 几十个细块会照旧排队生成，缓存被撑到上限的两倍多，切换要三四秒；这些块马上就会被替换掉
+    const downSwitch = !!(this.requestedLevel && lvl > this.requestedLevel);
     if (lvl) {
       const C = CHUNK_PX / lvl;
       const ci0 = Math.max(0, Math.floor(wx0 / C)), ci1 = Math.min(Math.ceil(CFG.W / C) - 1, Math.floor(wx1 / C));
@@ -3230,7 +3243,7 @@
         const key = lvl + ':' + ci + ':' + cj;
         let e = this.ground.get(key);
         if (!e || e.stale) {
-          queue.push({ kind: 'g', key: key, lvl: lvl, ci: ci, cj: cj, d: Math.abs((ci + 0.5) * C - cam.cx) + Math.abs((cj + 0.5) * C - cam.cy) });
+          if (!downSwitch) queue.push({ kind: 'g', key: key, lvl: lvl, ci: ci, cj: cj, d: Math.abs((ci + 0.5) * C - cam.cx) + Math.abs((cj + 0.5) * C - cam.cy) });
           if (!e) {
             // 退而使用较低分辨率的块
             for (const L2 of LEVELS.slice().reverse()) {
@@ -3310,7 +3323,7 @@
         let e = this.iso.get(key);
         const a = this.P(ci * C, cj * C, 0);
         const visible = this.isoVisible(e, ilvl, ci, cj, C);
-        if (visible && (!e || e.stale)) queue.push({ kind: 'i', key: key, lvl: ilvl, ci: ci, cj: cj, C: C, d: Math.abs((ci + 0.5) * C - cam.cx) + Math.abs((cj + 0.5) * C - cam.cy) - 0.5 });
+        if (visible && (!e || e.stale) && !downSwitch) queue.push({ kind: 'i', key: key, lvl: ilvl, ci: ci, cj: cj, C: C, d: Math.abs((ci + 0.5) * C - cam.cx) + Math.abs((cj + 0.5) * C - cam.cy) - 0.5 });
         if (visible && e && !e.empty) {
           e.used = this.frame;
           const fade = Math.min(1, (this.time - e.born) / 0.25);
@@ -3371,25 +3384,29 @@
     this.stats.pendingVisible = pending;
     const warming = this.warmUntil && performance.now() < this.warmUntil;
     if (!warming) this.warmUntil = 0;
-    let budget;
-    if (warming) budget = CFG.perf.warmBudgetMs;
-    else if (pending) budget = Math.max(2, Math.min(g.preview ? 4 : CFG.perf.sharpBudgetMs, 16 - (performance.now() - tStart)));
-    else {
-      budget = this.detail.ema < 14 && !(this.cam.fly) ? Math.min(CFG.perf.prefetchMs, Math.max(0, 14 - (performance.now() - tStart))) : 0;
-      if (budget > 0.5) this.prefetch(queue, lvl, { x0: wx0, y0: wy0, x1: wx1, y1: wy1 }, t >= 0.999 && cam.view === 1 && under < 0.99 && (congestion || this.layerFade < 0.99));
-      else budget = 0;
-    }
     // 镜头移动中（拖动、滚轮缩放、键盘平移）：每帧补块的预算收紧，保证移动流畅；停下后再用完整预算补齐
     const camKey = cam.cx.toFixed(3) + ':' + cam.cy.toFixed(3) + ':' + cam.zoom.toFixed(3) + ':' + cam.t.toFixed(2) + ':' + cam.under.toFixed(2);
     const moving = camKey !== this._camKey; this._camKey = camKey;
     if (moving) this.movedAt = performance.now();
     this.interacting = performance.now() - (this.movedAt || -1e9) < 200;
+    let budget;
+    if (warming) budget = CFG.perf.warmBudgetMs;
+    else if (pending) budget = g.preview ? 4 : (this.interacting ? (CFG.perf.movingBudgetMs || 3) : CFG.perf.sharpBudgetMs);
+    else if (!this.interacting && !this.cam.fly) {
+      // 空闲预绘（v3.58）：门槛从「帧耗时 < 14 ms」放宽到调参值。原来的门槛在重地图上永远达不到，
+      // 于是从不预绘下一档，每次缩放都要现画——这就是「缩放加载慢、像是没缓存」的主因之一
+      budget = this.detail.ema < (CFG.perf.prefetchEma || 26) ? CFG.perf.prefetchMs : 0;
+      if (budget > 0.5) this.prefetch(queue, lvl, { x0: wx0, y0: wy0, x1: wx1, y1: wy1 }, t >= 0.999 && cam.view === 1 && under < 0.99 && (congestion || this.layerFade < 0.99));
+      else budget = 0;
+    } else budget = 0;
     if (moving) budget = Math.min(budget, CFG.perf.movingBudgetMs || 3);
-    if (!warming || moving) budget = Math.min(budget, Math.max(0, 14 - (performance.now() - (this.frameWorkStart || frameStart))));
+    // v3.58：补块预算的下限。以前这一行会被压到 0（帧本来就超过 14 ms 时），于是每帧只画一块，
+    // 77 个分块要两秒多才补完。现在给一个下限，并允许整帧用到约 22 ms——画面长期糊着比掉几帧更难受
+    budget = Math.min(budget, Math.max(CFG.perf.minBudgetMs || 3, 22 - (performance.now() - frameStart)));
     if (this.isoJob) {
       const active = queue.find((q) => q.kind === 'i' && q.key === this.isoJob.key);
-      if (!active || this.isoJob.version !== g.city.version) this.cancelIsoJob();
-      else active.d = Math.min(active.d, -0.6);
+      if (!active) this.cancelIsoJob();
+      else { active.d = Math.min(active.d, -0.6); if (this.isoJob.version !== g.city.version) this.isoJob.stale = true; }
     }
     const gver = g.city.version + ':' + this.roadVer + ':' + this.styleEpoch + ':' + this.themeName;
     if (this.groundJob) {
@@ -3421,16 +3438,18 @@
         this.stepOverview();
       } else {
         if (this.isoJob && this.isoJob.key !== q.key) continue;
-        if (!this.isoJob) this.isoJob = { key: q.key, version: g.city.version, gen: this.isoChunkGen(q.lvl, q.ci, q.cj, q.C), cv: null };
-        const deadline = performance.now() + Math.max(0.25, budget - (performance.now() - queueStart));
+        if (!this.isoJob) this.isoJob = { key: q.key, version: g.city.version, gen: this.isoChunkGen(q.lvl, q.ci, q.cj, q.C), cv: null, stale: false };
+        const job = this.isoJob, deadline = performance.now() + Math.max(0.25, budget - (performance.now() - queueStart));
         do {
-          const step = this.isoJob.gen.next();
+          const step = job.gen.next();
           if (step.done) {
             const r = step.value, old = this.iso.get(q.key); if (old) this.cachePx -= old.px;
-            r.used = this.frame; r.born = old || warming || q.d >= 100 ? this.time - 1 : this.time; r.stale = false;
+            r.used = this.frame; r.lvl = q.lvl; r.born = old || warming || q.d >= 100 ? this.time - 1 : this.time;
+            // 生成期间城市变过（job.stale）：先显示这一块，再按过期重画，不丢掉已画的进度
+            r.stale = !!job.stale;
             this.iso.set(q.key, r); this.cachePx += r.px; this.isoJob = null; break;
           }
-          this.isoJob.cv = step.value.cv;
+          job.cv = step.value.cv;
         } while (performance.now() < deadline);
       }
       n++;

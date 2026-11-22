@@ -3,7 +3,7 @@
 (function (CM) {
   CM.CFG = {
     GAME_VERSION: '2.9.5',   // 上游引擎版本（合并到 2.9.5）
-    APP_VERSION: '3.57',     // 本分支（马鞍山公交版）的发布版本：只用于更新公告与「关于」页显示
+    APP_VERSION: '3.58',     // 本分支（马鞍山公交版）的发布版本：只用于更新公告与「关于」页显示
     TRAFFIC_MODEL: 6,      // 背景交通与共用区段采用新模型，旧可重建缓存作废
     RULES_REVISION: 18,    // 任务、接管铁路和站名修订，加载前保留原存档备份
     SAVE_FORMAT: 'city-metro-save',
@@ -401,6 +401,9 @@
     metroLed: { radius: 4, years: 4, base: 0.3, xfer: 0.5, flow: 0.6, flowFull: 60000, tod: [0, 0.15, 0.4, 0.8], cov0: 0.08, cov1: 0.45, wMin: 0.25, res: 1.0, jobs: 1.8, flatten: 0.6, capR: 0.35, capJ: 0.9 },
     saves: { prefix: 'cm1.', maxManual: 12 },
     // 动态对象上限（代表性展示）：汽车、车站行人、街道行人、列车上下车乘客（每帧）；声音：列车声部与同时播放的环境短音
-    perf: { solverInputMs: 1.5, solverBudgetMs: 5, solverBudgetMaxMs: 10, frameTargetMs: 13, jumpSliceMs: 10, jumpRenderMs: 250, chunkBudgetMs: 6, sharpBudgetMs: 8, movingBudgetMs: 3, prefetchMs: 2, warmBudgetMs: 10, cacheMaxPx: 24e6, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
+    // 补块预算（v3.58）：sharpBudgetMs 为「画面没补齐时」每帧愿意给分块绘制的上限，minBudgetMs 是下限
+    // （以前会被「本帧已用时间」压到 0，帧本来就长的大屏上退化成每帧只画一块，缩放后要几秒才变清楚）；
+    // prefetchEma 是空闲预绘的负载门槛（帧耗时超过它的 1/26 s 就完全预绘——重地图上等于从不预绘）
+    perf: { solverInputMs: 1.5, solverBudgetMs: 5, solverBudgetMaxMs: 10, frameTargetMs: 13, jumpSliceMs: 10, jumpRenderMs: 250, chunkBudgetMs: 6, sharpBudgetMs: 10, minBudgetMs: 3.5, movingBudgetMs: 3, prefetchMs: 2.5, prefetchEma: 30, warmBudgetMs: 12, cacheMaxPx: 32e6, maxCars: 320, maxPeds: 180, maxWalkers: 120, maxRiders: 120, trainVoices: 3, maxOneShots: 6 },
   };
 })(window.CM);

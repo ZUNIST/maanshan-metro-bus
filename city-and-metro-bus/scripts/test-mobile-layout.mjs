@@ -83,7 +83,7 @@ async function runNewsChecks({E,send,tap,wait,audit,screenshot,langs}) {
         expectedDate: version.date,
         visibleTitle: label.scrollWidth <= label.clientWidth + 1,
         horizontalFit: card.scrollWidth <= card.clientWidth + 1,
-        translated: items.length === 6 && items.every((item, i) => item.textContent === CM.I18n.text(version.items[i]))
+        translated: items.length === version.items.length && items.every((item, i) => item.textContent === CM.I18n.text(version.items[i]))
       };
     })()`);
     if (notice.date !== notice.expectedDate || !notice.visibleTitle || !notice.horizontalFit || !notice.translated) {
