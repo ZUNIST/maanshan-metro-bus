@@ -109,8 +109,10 @@
         ic(icon), h('span', { class: 'lb' }, label), opts.sub ? h('span', { class: 'sub' }, opts.sub) : null, ic('chev', 18, 'chev'));
     };
     const title = CM.I18n && CM.I18n.get() === 'en' ? h('h1', { class: 'start-title' }, '城市与地铁') : h('h1', { class: 'start-title' }, '城市', h('span', { class: 'yu' }, '与'), '地铁');
+    // v3.65：标题下标注本分支身份与版本（照社区修改版的惯例，如原作者 Starry 版那样）
+    const editionTag = h('div', { class: 'start-edition-tag' }, 'Zunist版 v' + (CFG.APP_VERSION || CFG.GAME_VERSION) + ' 社区修改版');
     const wrap = h('div', { class: 'start-wrap' },
-      title, h('div', { html: TITLE_DECO }),
+      title, editionTag, h('div', { html: TITLE_DECO }),
       h('div', { class: 'start-menu' },
         btn('play', '开始游戏', function () { self.showMapSelect(null, 'fwd'); }, { primary: true, sub: '选择地图' }),
         btn('clock', '继续游戏', function () { if (latest) self.loadSlot(latest.slotId); }, { disabled: !latest, sub: latest ? ((CM.MAPS[latest.map || 'gz'] || {}).name || '') + ' · ' + latest.date[0] + '年' + latest.date[1] + '月' : '暂无存档' }),
@@ -119,8 +121,7 @@
       CM.MAPS.tutorial ? h('button', { class: 'start-learn', onclick: function () { self.showMapSelect('tutorial'); } }, ic('help', 16), h('span', null, '第一次玩？先试试'), h('b', null, '新手教程 · 青湾'), ic('chev', 14)) : null,
       !storageOk ? h('div', { class: 'callout bad', style: { marginTop: '14px' } }, ic('error'), h('div', { class: 'ct' }, '当前浏览器禁止本地存储，进度将无法自动保存。')) : null,
       h('div', { class: 'start-foot' }, '规划地铁、改变出行、塑造城市。', h('br'),
-        // v3.24：主菜单直接标出这是「有轨电车版」，一眼能确认打开的是哪个版本
-        h('b', { class: 'start-edition', style: { color: 'var(--accent)' } }, '有轨电车版 v3.26.1'), '　', h('br'),
+        // v3.65：版本标识已移到标题下方的 start-edition-tag，这里不再重复过时的硬编码版本号
         h('a', { href: 'LICENSE.txt', target: '_blank', rel: 'noopener' }, '© 2026 VinsonFung · 仅限非商业使用'), h('br'),
         h('a', { href: 'https://www.openstreetmap.org/copyright', target: '_blank', rel: 'noopener' }, '地图 © OpenStreetMap 贡献者 · ODbL'), ' · v' + (CFG.APP_VERSION || CFG.GAME_VERSION)));
     // 右上角：公告、官方社区和主题共用按钮样式；外链保留当前游戏页面。
@@ -132,7 +133,8 @@
     const corner = h('div', { class: 'start-corner' }, news,
       social('bilibili', '游戏官方 B站', 'https://b23.tv/H18TUXD'),
       social('xiaohongshu', '游戏官方小红书', 'https://xhslink.cn/o/5eRdolGBwyK'),
-      social('douyin', '游戏官方抖音', 'https://v.douyin.com/XdxVSS5NHK8/'), this.startTheme);
+      // v3.65：本分支是社区修改版，右上角改为指向自己的 GitHub 仓库（图标也换成 GitHub）
+      social('github', '本版本 GitHub 仓库', 'https://github.com/ZUNIST/maanshan-metro-bus'), this.startTheme);
     this.openScreen(h('div', { class: 'start-root' }, wrap, corner), null, 'start' + (calm ? ' calm' : ''), tr || null);
     this.renderThemeBtns();
   };

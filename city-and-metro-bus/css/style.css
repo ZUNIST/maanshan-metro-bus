@@ -438,7 +438,10 @@ table.tbl th:first-child, table.tbl td:first-child { text-align: left; }
 .start-wrap { margin-left: max(6vw, 28px); width: min(400px, calc(100vw - 56px)); }
 .start-title { margin: 0; font-size: 62px; font-weight: 900; letter-spacing: 3px; line-height: 1.05; color: var(--navy); white-space: nowrap; }
 .start-title .yu { font-size: .7em; margin: 0 .03em; position: relative; top: .06em; }
-.title-deco { display: block; margin: 6px 0 34px; width: 100%; height: 34px; color: var(--navy); }
+/* v3.65：标题下的分支标识小字（Zunist版 vX.XX 社区修改版） */
+.start-edition-tag { margin-top: 8px; font-size: 12.5px; font-weight: 600; letter-spacing: .5px; color: var(--muted); }
+:root[data-theme="dark"] .start-edition-tag { color: var(--faint); }
+.title-deco { display: block; margin: 2px 0 34px; width: 100%; height: 34px; color: var(--navy); }
 .start-menu { display: flex; flex-direction: column; gap: 12px; }
 .start-btn { display: flex; align-items: center; gap: 16px; height: 60px; padding: 0 18px 0 22px; border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.95); background: rgba(255, 255, 255, 0.9); color: var(--text); box-shadow: 0 6px 18px rgba(36, 66, 104, 0.1); cursor: pointer; font-size: 18px; font-weight: 600; letter-spacing: 1px; text-align: left; transition: transform .22s var(--spring), box-shadow .2s, background .2s; }
 :root[data-theme="dark"] .start-btn:not(.primary) { background: rgba(23, 33, 49, 0.88); border-color: var(--line); }
