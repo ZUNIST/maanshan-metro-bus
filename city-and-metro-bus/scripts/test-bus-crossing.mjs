@@ -1,5 +1,6 @@
 // v3.39 回归：公交平面交叉豁免（公交无钢轨，与任何轨道平面交叉都不冲突）
-// 同时确认「电车/地铁之间的平交规则」没有被放宽。
+// v3.64：有轨电车不是全封闭系统，参与地面十字交叉（含与地铁地面段）一律放行；
+//        只有「地铁 × 地铁」的地面平交仍判冲突。
 // 用法：node scripts/test-bus-crossing.mjs
 import { readFile } from 'node:fs/promises';
 import vm from 'node:vm';
@@ -53,12 +54,16 @@ const tramBus = build('tram', 'bus');
 assert.equal(tramBus.length, 0, '有轨电车 × 公交：不应报平面交叉（实际 ' + tramBus.length + '）');
 console.log('  ok  有轨电车 × 公交：0 冲突');
 
+const tramTram = build('tram', 'tram');
+assert.equal(tramTram.length, 0, '电车 × 电车：地面十字交叉应放行（实际 ' + tramTram.length + '）');
+console.log('  ok  有轨电车 × 有轨电车：地面十字交叉放行（v3.64）');
+
+const tramMetro = build('tram', 'metro');
+assert.equal(tramMetro.length, 0, '有轨电车 × 地铁地面段：不应报平面交叉（实际 ' + tramMetro.length + '）');
+console.log('  ok  有轨电车 × 地铁地面段：地面十字交叉放行（v3.64）');
+
 const metroMetro = build('metro', 'metro');
 assert.ok(metroMetro.length >= 1, '地铁 × 地铁：仍应报平面交叉（实际 ' + metroMetro.length + '）');
 console.log('  ok  地铁 × 地铁：仍报 ' + metroMetro.length + ' 处（规则未放宽）');
 
-const tramTram = build('tram', 'tram');
-assert.ok(tramTram.length >= 1, '电车 × 电车：仍应报平面交叉（实际 ' + tramTram.length + '）');
-console.log('  ok  电车 × 电车：仍报 ' + tramTram.length + ' 处（规则未放宽）');
-
-console.log('PASS bus crossing: 公交与任何轨道平交放行，电车/地铁之间的平交仍拦截');
+console.log('PASS bus crossing: 公交与任何轨道平交放行；有轨电车参与的地面十字交叉放行；地铁×地铁仍拦截');

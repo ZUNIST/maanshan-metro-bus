@@ -208,15 +208,14 @@ assert.ok(F.MODELS.filter(m => m.tram).length === 6, '6 款通用电车车型');
     M.addSegment(n2, l2, share[3], sidB, [], 'surface');
     M.normalizeLines(n2);
 
-    // 默认（v3.27）：不同平面可以同站换乘，同层不行
+    // v3.64：有轨电车不是全封闭系统，同层也可以同站换乘（共线运营、路口地面换乘站都由此可用）
     let ev = M.evaluate(n2, g.net, city, 2027);
-    assert.ok(!ev.conflicts.some(c => c.type === 'tramShare'), '默认允许电车同站（跨层）');
-    assert.ok(ev.conflicts.some(c => c.type === 'tramLevel'), '两条都在地面要拦下');
-    const cv = ev.conflicts.filter(c => c.type === 'tramLevel')[0];
-    assert.ok(cv.fixes.some(f => f.op === 'platType'), '给出改站台层的一键修复');
+    assert.ok(!ev.conflicts.some(c => c.type === 'tramShare'), '默认允许电车同站');
+    assert.ok(!ev.conflicts.some(c => c.type === 'tramLevel'), '两条都在地面也放行（v3.64 放宽）');
+    // 手动分层仍可用，做天地换乘
     M.setPlatform(n2, share[3], l2, 'underground');
     ev = M.evaluate(n2, g.net, city, 2027);
-    assert.ok(!ev.conflicts.some(c => c.type === 'tramLevel'), '一地面一地下可以同站换乘');
+    assert.ok(!ev.conflicts.some(c => c.type === 'tramLevel'), '一地面一地下同样可以同站换乘');
     assert.equal(M.platType(n2.stations[share[3]], l2), 'underground', '站台层按线路记录');
     assert.ok(M.stationLevels(n2, share[3]).length === 2, '车站有地面与地下两层');
     // 关掉开关：完全禁止电车之间共用车站

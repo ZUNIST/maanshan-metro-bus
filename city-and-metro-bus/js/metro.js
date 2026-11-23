@@ -2070,9 +2070,11 @@
       });
     });
     // 地面线路平交
-    // 公交没有钢轨（v3.39）：直接在城市道路上行驶，与任何轨道平面交叉都不构成冲突——
-    // 现实里公交穿过电车轨道、铁路道口、地铁地面段（或从高架/地下线下方通过）都是常态。
-    // 因此公交段不进入平交判定（任意一方是公交即放行）；电车与地铁之间的平交规则不变。
+    // 地面线路平交：
+    // 公交没有钢轨（v3.39）：直接在城市道路上行驶，与任何轨道平面交叉都不构成冲突。
+    // 有轨电车（v3.64）：不是全封闭系统，现实里两条有轨电车线的地面轨道十字交叉是常态，
+    //   因此任意一方是有轨电车（或公交）即放行；只有「地铁 ↔ 地铁」的地面平交仍判冲突。
+    //   有轨电车与地铁之间的平交也随之放行——有轨电车穿越地铁地面段与路口十字交叉同理。
     const surf = [];
     for (const id in draft.segments) {
       const s = draft.segments[id];
@@ -2087,6 +2089,8 @@
       const g1 = M.segGeom(draft, s1, city), g2 = M.segGeom(draft, s2, city);
       const hit = polyCross(g1.pts, g2.pts, 0.3);
       if (!hit) continue;
+      // v3.64：有轨电车不是全封闭系统，参与地面的十字交叉（含与地铁地面段）一律放行
+      if (M.isTram(draft.lines[s1.line]) || M.isTram(draft.lines[s2.line])) continue;
       conflict({ type: 'level', kind: 'seg', ref: works, x: hit[0], y: hit[1], msg: '两条地面轨道平面交叉（' + (draft.lines[s1.line] ? draft.lines[s1.line].name : '') + ' 与 ' + (draft.lines[s2.line] ? draft.lines[s2.line].name : '') + '）', how: '地铁不能平面交叉。把其中一段改为高架或地下形成立体交叉，或在交叉处设换乘站。', fixes: [{ label: '改为高架', op: 'segType', seg: works, value: 'elevated' }, { label: '改为地下', op: 'segType', seg: works, value: 'underground' }] });
     }
     // 线形调整：与“已付费长度”比较（旧存档没有记录时按已建长度），免费的小幅调整会累计，
@@ -2248,8 +2252,10 @@
     //   ① 轻轨类（电车/公交）与地铁不能共用同一座车站——站台高度、闸机与票务都不同，现实里也是出站再进站；
     //   ② 公交与电车不能同站换乘（公交是路边虚拟站牌，无站台层），只能 100–500 m 站外步行换乘；
     //   ③ 公交与公交**可以**共站（现实里多条线路共用一个站台），且都是地面站，无需分层；
-    //   ④ 电车与电车可以同站换乘，但两条线不能都在同一平面（地下+地面、地面+高架、地下+高架都行）。
-    //   站台层记在 st.lv[线路]（v2.1 的「天地换乘」机制），绘线接入不同高度的线路时会自动加层。
+    //   ④ 有轨电车之间可以同站换乘，同层（地面+地面等）也可以（v3.64 放宽）——有轨电车不是全封闭系统，
+    //      两条有轨电车线共用一个地面站台、在路口十字交叉设换乘站，都是现实里的常态；共线也由此可用。
+    //      站台层仍记在 st.lv[线路]（v2.1 的「天地换乘」机制），不同高度接入会自动加层，玩家也可手动分层。
+    //      只有把 cfg.sameStationTransfer 关掉时才完全禁止电车之间共站。
     for (const sid in draft.stations) {
       const st = draft.stations[sid], ls = M.stationLines(draft, sid) || [];
       if (!ls.length) continue;
@@ -2288,7 +2294,9 @@
           fixes: [{ label: '把' + draft.lines[other].name + '移出本站', op: 'removeStation', station: sid },
                   { label: '本站降为大型公交站', op: 'stationSize', station: sid, value: 'L' }] });
       }
-      // ④ 电车与电车：站台不在同一平面才能同站换乘（公交不参与此校验——都是地面站、可共站）
+      // ④ 有轨电车之间（v3.64 放宽）：同层、不同层都可以同站换乘，共线也由此可用。
+      //    有轨电车不是全封闭系统——两条线共用一个地面站台、在路口十字交叉处设换乘站都是现实常态。
+      //    只有把 cfg.sameStationTransfer 关掉时才完全禁止电车之间共站（站外步行换乘）。
       const xferOK = tramL.some(function (l) { const cfg = draft.lines[l] && M.cfgOf(draft.lines[l]); return cfg && cfg.sameStationTransfer; });
       if (tramL.length >= 2 && !xferOK) {
         conflict({ type: 'tramShare', kind: 'station', ref: sid, x: st.x, y: st.y,
@@ -2296,22 +2304,8 @@
           how: '这些制式之间不设同站换乘站：把其中一条改到相邻的车站，两站相距 100–500 m 时乘客会站外步行换乘，同样计入换乘。',
           fixes: [{ label: '把' + draft.lines[tramL[1]].name + '移出本站', op: 'removeStation', station: sid }] });
       }
-      if (tramL.length >= 2 && xferOK) {
-        const taken = {};
-        for (const lid of tramL) {
-          const lv = M.platType(st, lid), nm = CFG.metro.typeName[lv] || lv;
-          if (!taken[lv]) { taken[lv] = lid; continue; }
-          const free = ['underground', 'surface', 'elevated'].filter(function (t) { return !tramL.some(function (l) { return M.platType(st, l) === t; }); });
-          const fixes = free.map(function (t) {
-            return { label: '把' + draft.lines[lid].name + '改为' + CFG.metro.typeName[t] + '站台', op: 'platType', station: sid, line: lid, value: t };
-          });
-          if (!fixes.length) fixes.push({ label: '拆除这座车站', op: 'removeStation', station: sid });
-          conflict({ type: 'tramLevel', kind: 'station', ref: sid, x: st.x, y: st.y,
-            msg: '车站「' + st.name + '」上' + draft.lines[taken[lv]].name + '与' + draft.lines[lid].name + '都在' + nm + '层',
-            how: '两条线在同一平面时不能设换乘站——同层相交只是一个平面交叉口，没有可换乘的站台。把其中一条改为另一层（地下 / 地面 / 高架），就能在这座车站里天地换乘；也可以把两条线分到相邻的两座车站，靠步行换乘。',
-            fixes: fixes });
-        }
-      }
+      // v3.64：同层换乘放行，删去原「两条线都在同一平面」的 tramLevel 冲突。
+      // 站台层仍按线路分记，玩家想做天地换乘时可手动把其中一条改到另一层；仿真侧 xferKind 对同层返回同台/节点换乘。
       // 轻轨类车站按制式允许的档位（v3.39：有轨电车 S/M/L、公交 S/M/L/BRT 站台，见 config.stationSizes）
       if (lightL.length && !metroL.length && !M.sizeOkFor(draft.lines[lightL[0]], st.size)) {
         const lL = draft.lines[lightL[0]], lSizes = (M.cfgOf(lL).stationSizes || ['S', 'M']);
