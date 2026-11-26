@@ -1794,6 +1794,7 @@
       case 'pop': grad(['#ffe296', '#f99e4c', '#de5434'], '0', '6 万人/km²'); note = '每个街区的常住人口密度（每月更新）。'; break;
       case 'econ': {
         opts('econK', [['gdp', '按 GDP'], ['pop', '按人口']]);
+        opts('econLines', [[0, '隐藏轨道'], [1, '显示轨道']]);   // v3.72：轨道线网可开关，默认隐藏，看分区更干净
         const ec = CM.EconLayer && CM.EconLayer.stats(self.g());
         if (ec) {
           const grads = CM.Renderer.ECON_COLORS || [[222, 118, 76]];

@@ -24,9 +24,19 @@
     for (const d of raw) if (d[1] && typeof d[1][0] === 'number' && /区$|县$|新区$|港$|市$/.test(d[0])) tier.add(d[0]);
     if (Array.isArray(D.districtTier) && D.districtTier.length) { tier.clear(); D.districtTier.forEach(function (n) { tier.add(n); }); }
     const named = new Map(labels.map(function (d) { return [d[0], [d[0], d[1], d[2]]]; }));
-    let pick = Array.from(tier).map(function (n) { return named.get(n); }).filter(Boolean);
-    // 没有任何区县级标记时，取 city.districtLabels 前若干「区/县/新区」名的项；再不行就用全部（退化为按片区）
-    if (!pick.length) pick = labels.filter(function (d) { return /区$|县$|新区$|港$|市$/.test(d[0]); });
+    // v3.72：没有现成地名标签的区县（和县图的「马鞍山市区」）可以用 D.districtAt 直接给锚点
+    const at = D.districtAt || {};
+    let pick = [];
+    // 按 districtTier 的顺序取锚点，区县颜色（ECON_COLORS 按下标取）才稳定
+    for (const n of Array.from(tier)) {
+      let p = named.get(n);
+      if (!p && Array.isArray(at[n])) { p = [n, at[n][0], at[n][1]]; named.set(n, p); }
+      if (p) pick.push(p);
+    }
+    if (!pick.length) {
+      // 没有任何区县级标记时，取 city.districtLabels 前若干「区/县/新区」名的项；再不行就用全部（退化为按片区）
+      pick = labels.filter(function (d) { return /区$|县$|新区$|港$|市$/.test(d[0]); });
+    }
     if (!pick.length) pick = labels;
     return pick.filter(function (d) { return isFinite(d[1]) && isFinite(d[2]); })
       .map(function (d) { return { name: d[0], x: d[1], y: d[2], jobs: 0, pop: 0, gdp: 0, children: [] }; });
@@ -60,9 +70,11 @@
       }
       const gdp = cityGDP(g), rate = tjobs > 0 ? gdp / tjobs : (tpop > 0 ? gdp / tpop : 0);
       const list = regions.map(function (r, k) {
-        return { k: k, name: r.name, x: r.cx, y: r.cy, pop: rpop[k], jobs: rjobs[k], gdp: rjobs[k] * rate, scenic: !!r.scenic, cells: r.cells };
+        // outside：境外 / 地图边缘的兜底片区（id 'outer'）。它们照常计入区县总量，但本身不是真正的片区，
+        // 放大后不单独标出来（那种地方的「人均」没有意义，标上去反而像错数）
+        return { k: k, id: r.id, name: r.name, x: r.cx, y: r.cy, pop: rpop[k], jobs: rjobs[k], gdp: rjobs[k] * rate, scenic: !!r.scenic, cells: r.cells, outside: !!r.empty || r.id === 'outer' };
       }).filter(function (r) { return r.pop > 0 || r.jobs > 0; });
-      // 大区聚合：把片区按质心归到最近的区名锚点
+      // 大区聚合：D.districtOf 给了显式归属的按表走，没给的按质心归到最近的区名锚点
       const anchors = districtAnchors(city);
       const regionD = new Int16Array(regions.length).fill(-1);
       let districts, dmap = null;
@@ -72,16 +84,28 @@
           for (let i = 0; i < anchors.length; i++) { const d = Math.hypot(x - anchors[i].x, y - anchors[i].y); if (d < best) { best = d; bi = i; } }
           return bi;
         };
+        const ixOf = new Map();
+        anchors.forEach(function (a, i) { ixOf.set(a.name, i); });
+        const dOf = D.districtOf || {};
+        // 片区 id（其次片区名）在表里查得到就用，查不到返回 -1
+        const pinned = function (r) {
+          const nm = r && (dOf[r.id] || dOf[r.name]);
+          if (!nm) return -1;
+          const i = ixOf.get(nm);
+          return i == null ? -1 : i;
+        };
         for (const r of list) {
-          const bi = nearest(r.x, r.y);
+          let bi = pinned(r);
+          if (bi < 0) bi = nearest(r.x, r.y);
           const a = anchors[bi]; a.pop += r.pop; a.jobs += r.jobs; a.gdp += r.gdp; a.children.push(r.k); r.d = bi; regionD[r.k] = bi;
         }
-        // 还没有人口 / 岗位的片区（未开发地、管制用地）也按质心归到最近的大区：
+        // 还没有人口 / 岗位的片区（未开发地、管制用地）也按同一套归属：
         // 填色才是一整片，不会在城区里留下空斑；境外片区（empty）不归，保持底图原样。
         for (let k = 0; k < regions.length; k++) {
           const r = regions[k];
           if (regionD[k] >= 0 || !r || r.empty || !isFinite(r.cx) || !isFinite(r.cy)) continue;
-          regionD[k] = nearest(r.cx, r.cy);
+          const pi = pinned(r);
+          regionD[k] = pi >= 0 ? pi : nearest(r.cx, r.cy);
         }
         // 一个区都没有人口时会被剔掉，序号要重排，否则 cellD 会指错区
         const keep = [];
@@ -93,17 +117,46 @@
           districts.push({ name: a.name, x: a.x, y: a.y, pop: a.pop, jobs: a.jobs, gdp: a.gdp, children: a.children, major: true });
         }
         dmap = keep;
+        // 小片归属（D.districtPatch）：江心洲、洞阳这类贴着区界的零碎地块，按折线多边形直接改归属
+        const patches = [];
+        if (Array.isArray(D.districtPatch)) for (const p of D.districtPatch) {
+          const ai = ixOf.get(p.d), poly = p.poly;
+          if (ai == null || !Array.isArray(poly) || poly.length < 3) continue;
+          const di = keep[ai];
+          if (di < 0) continue;
+          let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+          for (const q of poly) { x0 = Math.min(x0, q[0]); y0 = Math.min(y0, q[1]); x1 = Math.max(x1, q[0]); y1 = Math.max(y1, q[1]); }
+          patches.push({ di: di, poly: poly, x0: x0, y0: y0, x1: x1, y1: y1 });
+        }
+        this._patches = patches;
       } else {
         districts = list.map(function (r, i) { regionD[r.k] = i; return Object.assign({}, r, { major: true, children: [r.k] }); });
         for (const r of list) r.d = r.k;
+        this._patches = null;
       }
+      // 点在多边形内（射线法）：小片归属用
+      const inPoly = function (poly, x, y) {
+        let inside = false;
+        for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+          const xi = poly[i][0], yi = poly[i][1], xj = poly[j][0], yj = poly[j][1];
+          if ((yi > y) !== (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+      };
       // 每格归属的大区序号（着色用）。没有归属的格子（境外邻市、水域等无人片区）记 255，
       // 图层不给它们上色，底图的地理样貌照常显示（v3.71）。
       const cellD = new Uint8Array(N).fill(255);
+      const patches = this._patches;
       for (let c = 0; c < N; c++) {
         const d = regionD[city.region[c]];
-        if (d < 0) continue;
-        const m = dmap ? dmap[d] : d;
+        let m = d < 0 ? -1 : (dmap ? dmap[d] : d);
+        if (patches && patches.length) {
+          const cx = (c % W) + 0.5, cy = ((c / W) | 0) + 0.5;
+          for (const p of patches) {
+            if (cx < p.x0 || cx > p.x1 || cy < p.y0 || cy > p.y1) continue;
+            if (inPoly(p.poly, cx, cy)) m = p.di;
+          }
+        }
         if (m >= 0) cellD[c] = m;
       }
       const data = { list: list, districts: districts, cellD: cellD, total: { pop: tpop, jobs: tjobs, gdp: gdp }, err: tjobs > 0 ? 'jobs' : 'pop', key: key };

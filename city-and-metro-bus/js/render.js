@@ -103,7 +103,7 @@
     this.ground = new Map(); this.iso = new Map(); this.cachePx = 0;
     this.overview = null; this.overviewStale = true; this.overviewAt = 0;
     this.frame = 0; this.time = 0;
-    this.layer = 'none'; this.layerOpt = { shareDt: 'wd', cong: 'now', flow: 'all', station: 'all', stView: 'flow', stDt: 'avg', cover: 'time', facP: 'all', facDt: 'wd', gapDt: 'wd', devK: 'pop', devB: 'era', bgK: 'rail', bgDt: 'avg', econK: 'gdp' };
+    this.layer = 'none'; this.layerOpt = { shareDt: 'wd', cong: 'now', flow: 'all', station: 'all', stView: 'flow', stDt: 'avg', cover: 'time', facP: 'all', facDt: 'wd', gapDt: 'wd', devK: 'pop', devB: 'era', bgK: 'rail', bgDt: 'avg', econK: 'gdp', econLines: 0 };
     this.heat = null; this.heatKey = '';
     this.bFade = 0; this.roadVer = -1;
     this.labelsOn = true;
@@ -3360,11 +3360,28 @@
     };
     for (const d of info.districts) draw.call(this, d, true);
     // 放大后补片区明细：避开区县标注，且片区自身要有足够人口/岗位
-    if (z >= 10.5) for (const r of info.list) {
-      if (!r.jobs && !r.pop) continue;
-      const d = info.districts[r.d] || info.districts[0];
-      if (d && Math.hypot(r.x - d.x, r.y - d.y) < 3) continue;
-      draw.call(this, r, false);
+    if (z >= 10.5) {
+      // 按人口从多到少排，再逐个别避让：挤在一起时留下的是人口大的片区，不会糊成一团（v3.72）
+      const placed = info.districts.map(function (d) { const s = this.P(d.x, d.y, 0, tmp); return { x: s.x, y: s.y, w: 58, h: 30 }; }, this);
+      const kids = info.list.slice().sort(function (a, b) { return (b.pop + b.jobs) - (a.pop + a.jobs); });
+      for (const r of kids) {
+        if (!r.jobs && !r.pop) continue;
+        if (r.outside) continue;   // 境外 / 地图边缘兜底片区不单独标注
+        // 归属大区：按 children 找，别直接用 r.d（大区被过滤后序号会变）
+        let d = null;
+        for (const q of info.districts) if (q.children && q.children.indexOf(r.k) >= 0) { d = q; break; }
+        if (!d) continue;
+        if (Math.hypot(r.x - d.x, r.y - d.y) < 3) continue;
+        const sp = this.P(r.x, r.y, 0, tmp);
+        // 小标注的宽度按名字实际长度估算（「和县北部（乌江·香泉·石杨）」比「向山」宽一倍），
+        // 用矩形相交判断，挤在一起的片区只留人口大的那个
+        const hw = Math.min(72, Math.max(24, this.textW('600 11px ' + FONT, r.name) / 2 + 3)), hh = 23;
+        let hit = false;
+        for (const q of placed) if (Math.abs(q.x - sp.x) < q.w + hw && Math.abs(q.y - sp.y) < q.h + hh) { hit = true; break; }
+        if (hit) continue;
+        placed.push({ x: sp.x, y: sp.y, w: hw, h: hh });
+        draw.call(this, r, false);
+      }
     }
     ctx.restore();
   };
@@ -4009,7 +4026,9 @@
     const v = this.view;
     const sel = ui ? ui.selection : null;
     const hlLine = ui && ui.highlightLine;
-    const lyrDim = this.layer === 'cong' || this.layer === 'flow' ? 1 - 0.65 * (this.layerFade || 0) : 1;   // 拥堵、出行方向图层下淡化地铁
+    // 拥堵、出行方向图层下淡化地铁；区域经济图层默认整层隐藏（v3.72，图例里可以再打开）
+    const lyrDim = this.layer === 'cong' || this.layer === 'flow' ? 1 - 0.65 * (this.layerFade || 0)
+      : (this.layer === 'econ' ? (this.layerOpt.econLines ? 1 : 0) : 1);
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     if (!this.segPx) this.segPx = new SegPx(this);
     // 草案中被删除的正式轨道（虚影）
@@ -5961,7 +5980,8 @@
     const hubShown = [];   // v3.37：真正标出名字的枢纽设施——同名同点车站让位给它，避免两个标签叠在一点
     const labeledSt = [];  // v3.37：真正标出的站名——同名同点的普通地标（如「当涂东站」landmark）对它让位
     for (const it of mapLabels) if (it.hub && drawMapLabel(it)) hubShown.push(it);
-    if (C && this.stPx && z >= 8.5 && labOn) {
+    // 区域经济图层默认不显示轨道（线、站圈、站名一起藏），图例里可以打开
+    if (C && this.stPx && z >= 8.5 && labOn && !(this.layer === 'econ' && !this.layerOpt.econLines)) {
       const fs = 12, ix = this.metroOrder;
       // 接驳口车站的站名不再单独标注（v3.33）：开局的既有线（宁马线的铜井、宁和线的高家冲、
       // 宁安城际的南京南与芜湖接驳口、巢马的合肥接驳口）没有 portal 字段，但车站正好压在接驳口上，
@@ -6055,8 +6075,8 @@
           break;
         }      }
     }
-    // 区名
-    if (z < 16 && mapOn && this.layer !== 'flow') {
+    // 区名（含乡镇小地名）。区域经济图层由 drawEconLabels 自己标区县，底图的南义、腰埠这类小地名不再叠加（v3.72）
+    if (z < 16 && mapOn && this.layer !== 'flow' && this.layer !== 'econ') {
       const a = U.clamp((16 - z) / 5, 0, 1) * 0.75, font = TYPE.district(z);
       for (const dl of (city.districtLabels || [])) {
         const p = this.P(dl[1], dl[2], 0, tmp), px = p.x, py = p.y;
