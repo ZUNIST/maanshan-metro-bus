@@ -19,6 +19,8 @@
     meta: '500 11px ' + FONT, road: '500 10.5px ' + FONT, title: '700 12.5px ' + FONT,
   };
   const UNDER_DEPTH = 4;                     // 地下视图中地下线路的视觉下沉倍数
+  // 区域经济图层：区县区分色（参考分区设色地图，柔和但彼此可分）；深色主题用稍亮的同色系
+  const ECON_COLORS = [[110, 176, 214], [232, 168, 96], [150, 190, 130], [206, 146, 178], [152, 152, 208], [214, 194, 120], [120, 190, 180], [200, 150, 130], [150, 168, 210], [186, 196, 130]];
 
   // 地图主题：浅色为「云雾淡彩」风格（浅蓝白底、柔和水面、水墨山峦、玻璃色楼宇）；深色为同风格夜景
   const THEMES = {
@@ -86,7 +88,7 @@
     this.ground = new Map(); this.iso = new Map(); this.cachePx = 0;
     this.overview = null; this.overviewStale = true; this.overviewAt = 0;
     this.frame = 0; this.time = 0;
-    this.layer = 'none'; this.layerOpt = { shareDt: 'wd', cong: 'now', flow: 'all', station: 'all', stView: 'flow', stDt: 'avg', cover: 'time', facP: 'all', facDt: 'wd', gapDt: 'wd', devK: 'pop', devB: 'era', bgK: 'rail', bgDt: 'avg' };
+    this.layer = 'none'; this.layerOpt = { shareDt: 'wd', cong: 'now', flow: 'all', station: 'all', stView: 'flow', stDt: 'avg', cover: 'time', facP: 'all', facDt: 'wd', gapDt: 'wd', devK: 'pop', devB: 'era', bgK: 'rail', bgDt: 'avg', econK: 'gdp' };
     this.heat = null; this.heatKey = '';
     this.bFade = 0; this.roadVer = -1;
     this.labelsOn = true;
@@ -3032,7 +3034,7 @@
     const g = this.game, city = g.city, model = g.model, W = city.W, H = city.H, LO = this.layerOpt, lay = this.layer;
     const access = lay === 'cover' || lay === 'gap' ? model.net : null;
     const dyn = lay === 'fac' || lay === 'gap' || lay === 'flow' || lay === 'mshare' || lay === 'bgt';
-    const key = this.themeName + ':' + AX.flag() + ':' + lay + ':' + city.version + ':' + g.clock.y + ':' + g.clock.m + ':' + (lay === 'cover' ? g.netVersion + ':' + LO.cover : '') + (lay === 'fac' ? LO.facP + ':' + LO.facDt : '') + (lay === 'gap' ? LO.gapDt + ':' + g.netVersion : '') + (lay === 'mshare' ? LO.shareDt : '') + (lay === 'dev' ? LO.devK + ':' + LO.devB + ':' + (g.eraBase ? g.eraBase.id : '') + (LO.devK === 'pull' ? ':' + g.netVersion + ':' + (model.dailyStale ? 0 : model.version) : '') : '') + (dyn ? ':' + model.cycles + ':' + (model.settled ? 's' : '') : '') + (lay === 'bgt' ? ':' + LO.bgK + ':' + LO.bgDt : '');
+    const key = this.themeName + ':' + AX.flag() + ':' + lay + ':' + city.version + ':' + g.clock.y + ':' + g.clock.m + ':' + (lay === 'cover' ? g.netVersion + ':' + LO.cover : '') + (lay === 'fac' ? LO.facP + ':' + LO.facDt : '') + (lay === 'gap' ? LO.gapDt + ':' + g.netVersion : '') + (lay === 'mshare' ? LO.shareDt : '') + (lay === 'dev' ? LO.devK + ':' + LO.devB + ':' + (g.eraBase ? g.eraBase.id : '') + (LO.devK === 'pull' ? ':' + g.netVersion + ':' + (model.dailyStale ? 0 : model.version) : '') : '') + (dyn ? ':' + model.cycles + ':' + (model.settled ? 's' : '') : '') + (lay === 'bgt' ? ':' + LO.bgK + ':' + LO.bgDt : '') + (lay === 'econ' ? ':' + LO.econK : '');
     const old = this.heatLayers.get(lay);
     if (old && old.key === key && old.access === access) { this.heat = old.cv; this.heatKey = key; return; }
     this.heatKey = key;
@@ -3040,6 +3042,8 @@
     const ctx = this.heat.getContext('2d');
     const img = ctx.createImageData(W, H), d = img.data;
     const acc = model.net ? model.net.acc : null;
+    const econ = lay === 'econ' && CM.EconLayer ? CM.EconLayer.stats(g) : null;
+    this.econInfo = econ;
     // 设施出行需求：片区吸引（按目的）分到各格；全部目的时按主要目的着色
     let facCell = null, facDom = null, gapCell = null;
     const TR = CFG.trips, PK = TR.keys;
@@ -3165,6 +3169,16 @@
         const rg = city.regions[city.region[c]];
         if (rg.scenic) { col = [120, 170, 110]; a = 0.25; }
         else if (city.cellLocked(c)) { col = [150, 150, 150]; a = 0.25; }
+      } else if (lay === 'econ' && econ) {
+        // 区县分区设色：同区同色，深浅随该区 GDP（或人口）在全区的相对高低；放大后由 drawEconLabels 补片区明细
+        const di = econ.cellD[c] || 0, dst = econ.districts[di];
+        if (dst && city.lu[c] !== CM.LU.WATER && city.landFrac[c] >= 0.5) {
+          const base = ECON_COLORS[di % ECON_COLORS.length];
+          const vals = econ.districts.map(function (q) { return LO.econK === 'pop' ? q.pop : q.gdp; });
+          const hi = Math.max.apply(null, vals) || 1, t = 0.45 + 0.55 * Math.sqrt((LO.econK === 'pop' ? dst.pop : dst.gdp) / hi);
+          col = base.map(function (v) { return Math.round(v * (0.78 + 0.32 * t)); });
+          a = 0.16 + 0.20 * t;
+        }
       }
       if (col) { col = AX.rgb(col); const o = c * 4; d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = a * 255; }
     }
@@ -3211,6 +3225,44 @@
       const w = ctx.measureText(l.text).width + 16, c = col[l.kind];
       ctx.globalAlpha = 0.92; ctx.fillStyle = U.rgb(c, 0.95); ctx.beginPath(); ctx.roundRect ? ctx.roundRect(p.x - w / 2, p.y - 11, w, 22, 11) : ctx.rect(p.x - w / 2, p.y - 11, w, 22); ctx.fill();
       ctx.globalAlpha = 1; ctx.fillStyle = '#fff'; ctx.fillText(l.text, p.x, p.y + 0.5);
+    }
+    ctx.restore();
+  };
+
+  // 区域经济图层：区县（大字：区名 + GDP + 常住人口）与片区明细（放大后）两级标注
+  Renderer.prototype.drawEconLabels = function (ctx) {
+    const info = this.econInfo; if (!info || !info.districts.length || this.layerFade < 0.35) return;
+    const tmp = {}, dark = !!this.th.night, z = this.cam && this.cam.z != null ? this.cam.z : (this.z || 0);
+    const ink = dark ? [236, 242, 250] : [30, 44, 60], paper = dark ? [16, 24, 34] : [255, 255, 255];
+    ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const draw = function (item, major) {
+      const sp = this.P(item.x, item.y, 0, tmp);
+      if (sp.x < -120 || sp.y < -40 || sp.x > this.w + 120 || sp.y > this.h + 40) return;
+      const gdp = CM.EconLayer.gdpText(item.gdp), pop = CM.EconLayer.popText(item.pop);
+      const gap = major ? 3 : 2, r = major ? 8 : 6;
+      ctx.font = (major ? '700 15px ' : '600 11px ') + FONT;
+      const wName = ctx.measureText(item.name).width;
+      ctx.font = (major ? '500 11.5px ' : '400 10px ') + FONT;
+      const wVal = Math.max(ctx.measureText(gdp).width, ctx.measureText(pop).width);
+      const w = Math.max(wName, wVal) + (major ? 24 : 14), h = major ? r * 2 + 34 : r * 2 + 26;
+      ctx.globalAlpha = major ? 0.9 : 0.82;
+      ctx.fillStyle = U.rgb(paper, major ? 0.88 : 0.8);
+      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(sp.x - w / 2, sp.y - h / 2, w, h, r); else ctx.rect(sp.x - w / 2, sp.y - h / 2, w, h); ctx.fill();
+      ctx.strokeStyle = U.rgb(ink, 0.18); ctx.lineWidth = 1; ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = U.rgb(ink); ctx.font = (major ? '700 15px ' : '600 11px ') + FONT;
+      ctx.fillText(item.name, sp.x, sp.y - (major ? 10 : 8));
+      ctx.fillStyle = U.rgb(ink, 0.72); ctx.font = (major ? '500 11.5px ' : '400 10px ') + FONT;
+      ctx.fillText(gdp, sp.x, sp.y + (major ? 5 : 2));
+      ctx.fillText(pop, sp.x, sp.y + (major ? 18 : 13));
+    };
+    for (const d of info.districts) draw.call(this, d, true);
+    // 放大后补片区明细：避开区县标注，且片区自身要有足够人口/岗位
+    if (z >= 10.5) for (const r of info.list) {
+      if (!r.jobs && !r.pop) continue;
+      const d = info.districts[r.d] || info.districts[0];
+      if (d && Math.hypot(r.x - d.x, r.y - d.y) < 3) continue;
+      draw.call(this, r, false);
     }
     ctx.restore();
   };
@@ -3299,7 +3351,7 @@
     ctx.globalAlpha = 1;
     // ---- 图层（地面） ----
     const layerOn = this.layer !== 'none';
-    if (layerOn && ['pop', 'jobs', 'cover', 'region', 'fac', 'gap', 'dev', 'flow', 'mshare', 'bgt'].indexOf(this.layer) >= 0) {
+    if (layerOn && ['pop', 'jobs', 'cover', 'region', 'fac', 'gap', 'dev', 'flow', 'mshare', 'bgt', 'econ'].indexOf(this.layer) >= 0) {
       this.buildHeat();
       setWorld();
       ctx.imageSmoothingEnabled = true;
@@ -3403,6 +3455,7 @@
     this.drawLabels(ctx, ui);
     if (CM.Grid) CM.Grid.drawLabels(ctx, this);
     if (this.layer === 'dev' && this.layerFade > 0.5) this.drawDevLabels(ctx);
+    if (this.layer === 'econ' && this.layerFade > 0.35) this.drawEconLabels(ctx);
     if (this.hl) this.drawHighlight(ctx);
     if (ui && ui.drawOverlay) ui.drawOverlay(ctx, this);
     // ---- 缓存渲染队列 ----
@@ -5793,7 +5846,7 @@
         }
       }
     }
-    const busyLayer = this.layer === 'cong' || this.layer === 'flow' || this.layer === 'station' || this.layer === 'fac' || this.layer === 'gap';   // 这些图层自带标注，隐藏区名与未开放区域
+    const busyLayer = this.layer === 'cong' || this.layer === 'flow' || this.layer === 'station' || this.layer === 'fac' || this.layer === 'gap' || this.layer === 'econ';   // 这些图层自带标注，隐藏区名与未开放区域
     // 站名在所有图层都显示（v2.1）：图层自带的圆点与标注先占位，站名避开它们；车站客流图层已标出的站不重复标
     const lr = busyLayer && this._layerRectsFor === this.layer ? this._layerRects : null;
     if (lr) for (const b of lr) occupy(b[0], b[1], b[2], b[3]);

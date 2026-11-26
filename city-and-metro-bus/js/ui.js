@@ -29,6 +29,7 @@
   const LAYER_GROUPS = [['city', '城市'], ['traffic', '交通'], ['metro', '地铁']];
   const LAYERS = [
     { id: 'pop', metric: true, group: 'city', name: '人口密度', icon: 'lyPop', color: '#e9641f', desc: '各街区常住人口' },
+    { id: 'econ', group: 'city', name: '区域经济', icon: 'lyPop', color: '#2b7ea8', desc: '各区县 GDP 与常住人口' },
     { id: 'jobs', group: 'city', name: '住宅与就业', icon: 'lyJobs', color: '#6447dc', desc: '居住与岗位的分布' },
     { id: 'fac', group: 'city', name: '设施出行需求', icon: 'lyFac', color: '#c2410c', desc: '重要设施与各片区吸引的出行（按目的）' },
     { id: 'cong', metric: true, group: 'traffic', name: '道路拥堵', icon: 'lyCong', color: '#df3030', desc: '主要道路当前的拥堵程度' },
@@ -1791,6 +1792,19 @@
     let note = '';
     switch (id) {
       case 'pop': grad(['#ffe296', '#f99e4c', '#de5434'], '0', '6 万人/km²'); note = '每个街区的常住人口密度（每月更新）。'; break;
+      case 'econ': {
+        opts('econK', [['gdp', '按 GDP'], ['pop', '按人口']]);
+        const ec = CM.EconLayer && CM.EconLayer.stats(self.g());
+        if (ec) {
+          const grads = [[110, 176, 214], [232, 168, 96], [150, 190, 130], [206, 146, 178], [152, 152, 208], [214, 194, 120]];
+          for (let i = 0; i < Math.min(4, ec.districts.length); i++) {
+            const c = grads[i % grads.length], d = ec.districts[i], v = R.layerOpt.econK === 'pop' ? CM.EconLayer.popText(d.pop) : CM.EconLayer.gdpText(d.gdp);
+            box.appendChild(h('div', { class: 'li' }, h('span', { class: 'swatch', style: { background: 'rgb(' + c.join(',') + ')' } }), d.name + ' · ' + v));
+          }
+          box.appendChild(h('div', { class: 'tiny muted', style: { margin: '4px 0 2px' } }, '全区 ' + (R.layerOpt.econK === 'pop' ? CM.EconLayer.popText(ec.total.pop) : CM.EconLayer.gdpText(ec.total.gdp)) + ' · 共 ' + ec.districts.length + ' 个区县'));
+        }
+        note = '按区县着色并标出 GDP 与常住人口：区县 GDP = 全城 GDP × 该区岗位占全城岗位的比例（宏观模型口径，随经济与城市发展变化）；人口为城镇人口。地图放大后还会标出各片区明细。'; break;
+      }
       case 'jobs': li('#f0963c', '以住宅为主'); li('#9aa0b0', '职住混合'); li('#3468d6', '以就业岗位为主'); note = '颜色越深，人口与岗位越密集。'; break;
       case 'cong': {
         // v2.3 重新设计：「拥堵程度」看当前时刻或工作日早高峰；「拥堵变化」与对比基准（最近一次新增车站的建设前、一年前）相比
