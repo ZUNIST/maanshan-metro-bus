@@ -3229,7 +3229,7 @@
     ctx.restore();
   };
 
-  // 区域经济图层：区县（大字：区名 + GDP + 常住人口）与片区明细（放大后）两级标注
+  // 区域经济图层：区县（大字：区名 + GDP + 常住人口 + 人均 GDP）与片区明细（放大后）两级标注
   Renderer.prototype.drawEconLabels = function (ctx) {
     const info = this.econInfo; if (!info || !info.districts.length || this.layerFade < 0.35) return;
     const tmp = {}, dark = !!this.th.night, z = this.cam && this.cam.z != null ? this.cam.z : (this.z || 0);
@@ -3238,23 +3238,25 @@
     const draw = function (item, major) {
       const sp = this.P(item.x, item.y, 0, tmp);
       if (sp.x < -120 || sp.y < -40 || sp.x > this.w + 120 || sp.y > this.h + 40) return;
-      const gdp = CM.EconLayer.gdpText(item.gdp), pop = CM.EconLayer.popText(item.pop);
-      const gap = major ? 3 : 2, r = major ? 8 : 6;
+      const gdp = CM.EconLayer.gdpText(item.gdp), pop = CM.EconLayer.popText(item.pop), avg = CM.EconLayer.perCapitaText(item.gdp, item.pop);
+      const r = major ? 8 : 6, lh = major ? 13.5 : 10;
       ctx.font = (major ? '700 15px ' : '600 11px ') + FONT;
       const wName = ctx.measureText(item.name).width;
       ctx.font = (major ? '500 11.5px ' : '400 10px ') + FONT;
-      const wVal = Math.max(ctx.measureText(gdp).width, ctx.measureText(pop).width);
-      const w = Math.max(wName, wVal) + (major ? 24 : 14), h = major ? r * 2 + 34 : r * 2 + 26;
+      const wVal = Math.max(ctx.measureText(gdp).width, ctx.measureText(pop).width, ctx.measureText(avg).width);
+      const w = Math.max(wName, wVal) + (major ? 24 : 14), h = r * 2 + lh * 4 + (major ? 2 : 0);
+      const y0 = sp.y - lh * 1.5;   // 四行的第一行基线
       ctx.globalAlpha = major ? 0.9 : 0.82;
       ctx.fillStyle = U.rgb(paper, major ? 0.88 : 0.8);
       ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(sp.x - w / 2, sp.y - h / 2, w, h, r); else ctx.rect(sp.x - w / 2, sp.y - h / 2, w, h); ctx.fill();
       ctx.strokeStyle = U.rgb(ink, 0.18); ctx.lineWidth = 1; ctx.stroke();
       ctx.globalAlpha = 1;
       ctx.fillStyle = U.rgb(ink); ctx.font = (major ? '700 15px ' : '600 11px ') + FONT;
-      ctx.fillText(item.name, sp.x, sp.y - (major ? 10 : 8));
+      ctx.fillText(item.name, sp.x, y0);
       ctx.fillStyle = U.rgb(ink, 0.72); ctx.font = (major ? '500 11.5px ' : '400 10px ') + FONT;
-      ctx.fillText(gdp, sp.x, sp.y + (major ? 5 : 2));
-      ctx.fillText(pop, sp.x, sp.y + (major ? 18 : 13));
+      ctx.fillText(gdp, sp.x, y0 + lh);
+      ctx.fillText(pop, sp.x, y0 + lh * 2);
+      ctx.fillText(avg, sp.x, y0 + lh * 3);
     };
     for (const d of info.districts) draw.call(this, d, true);
     // 放大后补片区明细：避开区县标注，且片区自身要有足够人口/岗位

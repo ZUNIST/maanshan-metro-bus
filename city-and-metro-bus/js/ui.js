@@ -1803,7 +1803,7 @@
           }
           box.appendChild(h('div', { class: 'tiny muted', style: { margin: '4px 0 2px' } }, '全区 ' + (R.layerOpt.econK === 'pop' ? CM.EconLayer.popText(ec.total.pop) : CM.EconLayer.gdpText(ec.total.gdp)) + ' · 共 ' + ec.districts.length + ' 个区县'));
         }
-        note = '按区县着色并标出 GDP 与常住人口：区县 GDP = 全城 GDP × 该区岗位占全城岗位的比例（宏观模型口径，随经济与城市发展变化）；人口为城镇人口。地图放大后还会标出各片区明细。'; break;
+        note = '按区县着色并标出 GDP、常住人口与人均 GDP：区县 GDP = 全城 GDP × 该区岗位占全城岗位的比例（宏观模型口径，随经济与城市发展变化）；人口为城镇人口，人均 GDP = 区 GDP ÷ 区人口。地图放大后还会标出各片区明细。'; break;
       }
       case 'jobs': li('#f0963c', '以住宅为主'); li('#9aa0b0', '职住混合'); li('#3468d6', '以就业岗位为主'); note = '颜色越深，人口与岗位越密集。'; break;
       case 'cong': {

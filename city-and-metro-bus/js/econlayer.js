@@ -84,9 +84,11 @@
       this._cache = { key: key, data: data };
       return data;
     },
-    // 数值格式：GDP 用「亿元」，人口用「万」
+    // 数值格式：GDP 用「亿元」，人口用「万」，人均 GDP 用「万元/人」
     gdpText: function (wan) { const v = wan / 10000; return (v >= 1e4 ? v.toFixed(0) : v >= 100 ? v.toFixed(1) : v.toFixed(2)) + ' 亿元'; },
-    popText: function (p) { return (p / 10000).toFixed(1) + ' 万人'; }
+    popText: function (p) { return (p / 10000).toFixed(1) + ' 万人'; },
+    // gdp 单位为万元、pop 单位为人，二者相除即 万元/人
+    perCapitaText: function (gdp, pop) { if (!(pop > 0)) return '人均 —'; const v = gdp / pop; return '人均 ' + (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2)) + ' 万元'; }
   };
   CM.EconLayer = EconLayer;
 })(window.CM);
