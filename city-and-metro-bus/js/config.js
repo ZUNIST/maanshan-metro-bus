@@ -3,7 +3,7 @@
 (function (CM) {
   CM.CFG = {
     GAME_VERSION: '2.9.5',   // 上游引擎版本（合并到 2.9.5）
-    APP_VERSION: '3.72',     // 本分支（马鞍山公交版）的发布版本：只用于更新公告与「关于」页显示
+    APP_VERSION: '3.73',     // 本分支（马鞍山公交版）的发布版本：只用于更新公告与「关于」页显示
     TRAFFIC_MODEL: 6,      // 背景交通与共用区段采用新模型，旧可重建缓存作废
     RULES_REVISION: 18,    // 任务、接管铁路和站名修订，加载前保留原存档备份
     SAVE_FORMAT: 'city-metro-save',

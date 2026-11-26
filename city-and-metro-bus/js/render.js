@@ -3915,8 +3915,8 @@
       ctx.setLineDash([]); ctx.lineDashOffset = 0; ctx.globalAlpha = 1;
     }
     const stH = function (s) { let hh = CFG.metro.height[s.type]; if (hh < 0) hh = hh * under * UNDER_DEPTH; return hh; };
-    if (rs.xLinks.length) {
-      ctx.strokeStyle = TH.stInter; ctx.globalAlpha = 0.55; ctx.lineWidth = Math.max(2, lw * 0.45); ctx.setLineDash([3, 4]); ctx.lineCap = 'round';
+    if (rs.xLinks.length && lyrDim > 0.01) {
+      ctx.strokeStyle = TH.stInter; ctx.globalAlpha = 0.55 * lyrDim; ctx.lineWidth = Math.max(2, lw * 0.45); ctx.setLineDash([3, 4]); ctx.lineCap = 'round';
       ctx.beginPath();
       for (const l of rs.xLinks) { const A = C.stations[l[0]], B = C.stations[l[1]]; if (!A || !B) continue; const pa = this.P(A.x, A.y, stH(A)), pb = this.P(B.x, B.y, stH(B)); ctx.moveTo(pa.x, pa.y); ctx.lineTo(pb.x, pb.y); }
       ctx.stroke(); ctx.setLineDash([]); ctx.globalAlpha = 1;
@@ -3972,6 +3972,8 @@
   Renderer.prototype.drawVirtualNodes = function (ctx, C, ui, under) {
     this._vnPx = null;
     if (!C) return;
+    // 经济图层隐藏轨道时，虚拟换乘节点一并隐藏（节点与站外换乘虚线同属轨道线路信息）
+    if (this.layer === 'econ' && !this.layerOpt.econLines) return;
     const net = C.net, tool = ui && ui.tools ? ui.tools.tool : null, sel = ui ? ui.selection : null, v = this.view;
     const show = tool === 'line' || tool === 'edit' || tool === 'select' || tool === 'demolish';
     if (!net || (!show && !(sel && sel.kind === 'station' && net.stations[sel.id] && net.stations[sel.id].v))) return;
