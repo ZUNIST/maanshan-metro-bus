@@ -84,11 +84,21 @@
       this._cache = { key: key, data: data };
       return data;
     },
-    // 数值格式：GDP 用「亿元」，人口用「万」，人均 GDP 用「万元/人」
-    gdpText: function (wan) { const v = wan / 10000; return (v >= 1e4 ? v.toFixed(0) : v >= 100 ? v.toFixed(1) : v.toFixed(2)) + ' 亿元'; },
+    // 数值格式随当前地图货币（人民币/美元/英镑/日元…）：内部金额单位为「万 + 本城货币」，直接复用 U.fmtMoney
+    // 它处理亿/万换算、货币改革（法郎→欧元）与英文本地化；人口与币种无关
+    gdpText: function (wan) { return U.fmtMoney(wan); },
     popText: function (p) { return (p / 10000).toFixed(1) + ' 万人'; },
-    // gdp 单位为万元、pop 单位为人，二者相除即 万元/人
-    perCapitaText: function (gdp, pop) { if (!(pop > 0)) return '人均 —'; const v = gdp / pop; return '人均 ' + (v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(1) : v.toFixed(2)) + ' 万元'; }
+    // 人均 GDP：gdp「万货币」÷ pop「人」= 每人「万货币」。按本城货币显示，保留一位小数便于比较
+    // （U.fmtMoney 对 1–10000 的整数部分会取整，人均 2.4 万会变成 2 万，故这里自行控制精度）
+    perCapitaText: function (gdp, pop) {
+      if (!(pop > 0)) return '人均 —';
+      const mo = (CM.CFG && CM.CFG.money) || { unit: '元', wan: '万元' }, div = mo.div || 1;
+      const v = gdp / pop / div;   // 每人万货币（折算当期货币）
+      let s;
+      if (v >= 1) s = v.toLocaleString('zh-CN', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + ' ' + (mo.wan || '万元');
+      else s = Math.round(v * 10000).toLocaleString('zh-CN') + ' ' + (mo.unit || '元');
+      return '人均 ' + s;
+    }
   };
   CM.EconLayer = EconLayer;
 })(window.CM);

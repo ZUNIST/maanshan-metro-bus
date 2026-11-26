@@ -40,10 +40,14 @@ for (const id of ['ms', 'ms27', 'ms30', 'hx', 'hx27', 'ny']) {
   assert.ok(Math.abs(dg - s.total.gdp) / Math.max(1, s.total.gdp) < 1e-6, id + ' 区县 GDP 之和 = 全城');
   assert.ok(Math.abs(lp - s.total.pop) / Math.max(1, s.total.pop) < 1e-6, id + ' 片区人口之和 = 全城');
   assert.ok(s.total.gdp > 0, id + ' 全城 GDP 为正');
+  if (C.applyMoneyEra) C.applyMoneyEra(g.clock.y, g.clock.m);
+  const mo = C.CFG.money || { unit: '元', yi: '亿元' };
   const txt = C.EconLayer.gdpText(s.total.gdp), ptxt = C.EconLayer.popText(s.total.pop), atxt = C.EconLayer.perCapitaText(s.total.gdp, s.total.pop);
-  assert.ok(/亿元$/.test(txt) && /万人$/.test(ptxt), id + ' 文本格式：' + txt + ' / ' + ptxt);
-  assert.ok(/^人均 [0-9,.]+ 万元$/.test(atxt), id + ' 人均 GDP 格式：' + atxt);
-  for (const d of s.districts) if (d.pop > 0) assert.ok(/^人均 [0-9,.]+ 万元$/.test(C.EconLayer.perCapitaText(d.gdp, d.pop)), id + '/' + d.name + ' 人均 GDP 格式');
+  assert.ok(/万人$/.test(ptxt), id + ' 人口格式：' + ptxt);
+  // GDP 与人均随本城货币：必须带上当前货币名（元/美元/英镑/日元…），不能一律「万元」
+  assert.ok(txt.indexOf(mo.yi) >= 0 || txt.indexOf(mo.unit) >= 0 || txt.indexOf(mo.wan) >= 0, id + ' GDP 用本城货币：' + txt + '（' + mo.unit + '）');
+  assert.ok(atxt.indexOf('人均 ') === 0 && (atxt.indexOf(mo.unit) >= 0 || atxt.indexOf(mo.wan) >= 0 || atxt.indexOf(mo.yi) >= 0), id + ' 人均用本城货币：' + atxt);
+  for (const d of s.districts) if (d.pop > 0) assert.ok(C.EconLayer.perCapitaText(d.gdp, d.pop).indexOf('人均 ') === 0, id + '/' + d.name + ' 人均 GDP 格式');
   console.log('  ' + id + ' ok：' + s.districts.length + ' 区 / ' + s.list.length + ' 片区，GDP ' + txt + '，人口 ' + ptxt + '，' + atxt);
 }
 console.log('\n区域经济图层统计测试通过');
