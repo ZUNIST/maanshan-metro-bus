@@ -19,8 +19,9 @@
     meta: '500 11px ' + FONT, road: '500 10.5px ' + FONT, title: '700 12.5px ' + FONT,
   };
   const UNDER_DEPTH = 4;                     // 地下视图中地下线路的视觉下沉倍数
-  // 区域经济图层：区县区分色（参考分区设色地图，柔和但彼此可分）；深色主题用稍亮的同色系
-  const ECON_COLORS = [[110, 176, 214], [232, 168, 96], [150, 190, 130], [206, 146, 178], [152, 152, 208], [214, 194, 120], [120, 190, 180], [200, 150, 130], [150, 168, 210], [186, 196, 130]];
+  // 区域经济图层：区县区分色。刻意用暖色 / 紫红系，避开地图底图的水体蓝（约 #94c0e3）与森林绿（约 #aad4b4 / #86bc80），
+  // 否则分区色容易和江河、山林混在一起分不清；各色彼此也保持明显差异。
+  const ECON_COLORS = [[235, 160, 90], [214, 110, 105], [178, 130, 200], [225, 150, 190], [225, 190, 95], [190, 145, 110], [150, 120, 190], [230, 140, 120], [205, 160, 185], [240, 175, 110]];
 
   // 地图主题：浅色为「云雾淡彩」风格（浅蓝白底、柔和水面、水墨山峦、玻璃色楼宇）；深色为同风格夜景
   const THEMES = {
@@ -3170,14 +3171,21 @@
         if (rg.scenic) { col = [120, 170, 110]; a = 0.25; }
         else if (city.cellLocked(c)) { col = [150, 150, 150]; a = 0.25; }
       } else if (lay === 'econ' && econ) {
-        // 区县分区设色：同区同色，深浅随该区 GDP（或人口）在全区的相对高低；放大后由 drawEconLabels 补片区明细
-        const di = econ.cellD[c] || 0, dst = econ.districts[di];
-        if (dst && city.lu[c] !== CM.LU.WATER && city.landFrac[c] >= 0.5) {
-          const base = ECON_COLORS[di % ECON_COLORS.length];
-          const vals = econ.districts.map(function (q) { return LO.econK === 'pop' ? q.pop : q.gdp; });
-          const hi = Math.max.apply(null, vals) || 1, t = 0.45 + 0.55 * Math.sqrt((LO.econK === 'pop' ? dst.pop : dst.gdp) / hi);
-          col = base.map(function (v) { return Math.round(v * (0.78 + 0.32 * t)); });
-          a = 0.16 + 0.20 * t;
+        const reg = city.regions[city.region[c]];
+        // 境外区域（empty，如南京/芜湖/合肥/滁州）统一用不透明白色覆盖，不参与分区统计与设色
+        if (reg && reg.empty) { col = TH.night ? [40, 48, 60] : [255, 255, 255]; a = 1; }
+        else {
+          // 区县分区设色：同区同色，深浅随该区 GDP（或人口）在全区的相对高低。
+          // 水体与林地 / 公园保留底图原色，不叠分区色，避免和蓝绿底图混在一起。
+          const wood = city.wood ? city.wood[c] : 0, park = city.parkCov ? city.parkCov[c] : 0;
+          const di = econ.cellD[c] || 0, dst = econ.districts[di];
+          if (dst && city.lu[c] !== CM.LU.WATER && city.landFrac[c] >= 0.5 && wood < 0.35 && park < 0.35) {
+            const base = ECON_COLORS[di % ECON_COLORS.length];
+            const vals = econ.districts.map(function (q) { return LO.econK === 'pop' ? q.pop : q.gdp; });
+            const hi = Math.max.apply(null, vals) || 1, t = 0.45 + 0.55 * Math.sqrt((LO.econK === 'pop' ? dst.pop : dst.gdp) / hi);
+            col = base.map(function (v) { return Math.round(v * (0.78 + 0.32 * t)); });
+            a = 0.16 + 0.20 * t;
+          }
         }
       }
       if (col) { col = AX.rgb(col); const o = c * 4; d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = a * 255; }
@@ -3239,24 +3247,21 @@
       const sp = this.P(item.x, item.y, 0, tmp);
       if (sp.x < -120 || sp.y < -40 || sp.x > this.w + 120 || sp.y > this.h + 40) return;
       const gdp = CM.EconLayer.gdpText(item.gdp), pop = CM.EconLayer.popText(item.pop), avg = CM.EconLayer.perCapitaText(item.gdp, item.pop);
-      const r = major ? 8 : 6, lh = major ? 13.5 : 10;
-      ctx.font = (major ? '700 15px ' : '600 11px ') + FONT;
-      const wName = ctx.measureText(item.name).width;
-      ctx.font = (major ? '500 11.5px ' : '400 10px ') + FONT;
-      const wVal = Math.max(ctx.measureText(gdp).width, ctx.measureText(pop).width, ctx.measureText(avg).width);
-      const w = Math.max(wName, wVal) + (major ? 24 : 14), h = r * 2 + lh * 4 + (major ? 2 : 0);
-      const y0 = sp.y - lh * 1.5;   // 四行的第一行基线
-      ctx.globalAlpha = major ? 0.9 : 0.82;
-      ctx.fillStyle = U.rgb(paper, major ? 0.88 : 0.8);
-      ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(sp.x - w / 2, sp.y - h / 2, w, h, r); else ctx.rect(sp.x - w / 2, sp.y - h / 2, w, h); ctx.fill();
-      ctx.strokeStyle = U.rgb(ink, 0.18); ctx.lineWidth = 1; ctx.stroke();
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = U.rgb(ink); ctx.font = (major ? '700 15px ' : '600 11px ') + FONT;
-      ctx.fillText(item.name, sp.x, y0);
-      ctx.fillStyle = U.rgb(ink, 0.72); ctx.font = (major ? '500 11.5px ' : '400 10px ') + FONT;
-      ctx.fillText(gdp, sp.x, y0 + lh);
-      ctx.fillText(pop, sp.x, y0 + lh * 2);
-      ctx.fillText(avg, sp.x, y0 + lh * 3);
+      const lh = major ? 13.5 : 10, y0 = sp.y - lh * 1.5;   // 四行的第一行基线
+      // 不画白框：四行文字直接落在分区色上，用纸色描边（paint-order）保证任何底色上都读得清
+      ctx.globalAlpha = major ? 1 : 0.9;
+      ctx.lineJoin = 'round'; ctx.miterLimit = 2; ctx.lineWidth = major ? 3.4 : 2.6;
+      ctx.strokeStyle = U.rgb(paper, dark ? 0.95 : 0.92);
+      ctx.fillStyle = U.rgb(ink);
+      const line = function (txt, dy, font, fill) {
+        ctx.font = font;
+        if (ctx.strokeText) ctx.strokeText(txt, sp.x, dy);
+        ctx.fillStyle = fill; ctx.fillText(txt, sp.x, dy);
+      };
+      line(item.name, y0, (major ? '700 15px ' : '600 11px ') + FONT, U.rgb(ink));
+      line(gdp, y0 + lh, (major ? '500 11.5px ' : '400 10px ') + FONT, U.rgb(ink, 0.9));
+      line(pop, y0 + lh * 2, (major ? '500 11.5px ' : '400 10px ') + FONT, U.rgb(ink, 0.9));
+      line(avg, y0 + lh * 3, (major ? '500 11.5px ' : '400 10px ') + FONT, U.rgb(ink, 0.9));
     };
     for (const d of info.districts) draw.call(this, d, true);
     // 放大后补片区明细：避开区县标注，且片区自身要有足够人口/岗位
