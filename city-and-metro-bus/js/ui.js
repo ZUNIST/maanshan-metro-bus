@@ -763,8 +763,10 @@
       }
     }
     if (this.layer === 'tod' && this.R.layerOpt.todMode === 'rev' && this._revenueLegend !== this.R.stationRevenue() && !this.legendCard.contains(document.activeElement)) this.renderDock();
-    const n = g.tasks.active.length;
-    this.taskCnt.textContent = n; this.taskCnt.style.display = n ? '' : 'none';
+    const todo = CM.Todo.count(g, this), n = todo.n || g.tasks.active.length;
+    if (this.taskCnt.textContent !== String(n)) this.taskCnt.textContent = n;
+    this.taskCnt.dataset.level = todo.n ? (todo.urgent ? 'urgent' : 'warn') : 'active';
+    this.taskCnt.style.display = n ? '' : 'none';
     const s = this.save;
     this.hbtns.menu.classList.toggle('warn-dot', s.state === 'error');
     // 存档状态：保存中在菜单按钮上显示脉动小点；悬停提示注明是否已保存
@@ -2007,8 +2009,9 @@
     }
     else if (key === 'tasks') {
       if (open && top.kind === 'tasks') { this.closePanel(); return; }
-      this.taskTab = 'active';
-      this.openPage('tasks', 'active', { root: true });
+      const tab = CM.Todo.count(this.g(), this).n ? 'todo' : 'active';
+      this.taskTab = tab;
+      this.openPage('tasks', tab, { root: true });
     }
     else if (key === 'save') this.openPage('saves', null, { toggle: true, root: true });
     else this.openPage('metric', key, { toggle: true, root: true });
@@ -2160,6 +2163,22 @@
   UI.prototype.kv = function (rows) {
     const el = h('div', { class: 'kv' });
     for (const r of rows) { if (!r) continue; el.append(h('div', { class: 'k' }, r[0]), h('div', { class: 'v' + (r[2] ? ' ' + r[2] : '') }, r[1])); }
+    return el;
+  };
+  // 一句话引导（v3.4）：第一次打开某个功能时在顶部出现一句说明，点「知道了」后不再出现（记在设置里，所有存档共用）
+  const TIPS1 = {
+    todo: '需要处理的事都在这里：任务临期、线路过载、招标与财政预警。处理完会自动消失，紧急的排在最前。',
+    ops: '地铁芯集中管理全部线路与车站：改名改色、列车、站台规模、车站商业和票价。建线、建站仍在地图上完成。',
+    fare: '票价跟着物价走最稳：涨得比物价快会掉满意度，定得太高反而收不到钱。调价前先看下方的预估。',
+    trains: '列车越多发车越密。智能调度按客流安排已有列车；不够时去车辆段买车，或开启每月自动购车。',
+    debt: '债券只能用于建设，按期还本付息；每年有发行额度，逾期会停发新债。',
+    ppp: '政府合同：中标后自己设计、出资建设，按期开通拿补助，运营期按服务与拥挤情况收取付费。',
+  };
+  UI.prototype.tip1 = function (key) {
+    const seen = CM.Settings.get('seenTips') || [], text = TIPS1[key];
+    if (!text || seen.indexOf(key) >= 0) return null;
+    const el = h('div', { class: 'tip1', role: 'note' }, ic('info'), h('span', null, text),
+      h('button', { onclick: function () { CM.Settings.set('seenTips', (CM.Settings.get('seenTips') || []).concat([key])); el.remove(); snd('soft'); } }, '知道了'));
     return el;
   };
   UI.prototype.stat = function (k, v, d, dcls, icon) {

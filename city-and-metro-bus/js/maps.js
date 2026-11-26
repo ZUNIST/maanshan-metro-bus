@@ -218,6 +218,16 @@
       // 地铁圈关注的市民（v2.3）：存下的动态按片区编号定位（v2.9 补）
       const vf = p.voices && p.voices.follow;
       if (vf) for (const h in vf) for (const q of (vf[h] && vf[h].posts) || []) if (q && q.at && typeof q.at.zone === 'number') q.at.zone = zmap(q.at.zone);
+      // 市民人物志（v3.4）：家、单位与孩子学校的地理位置随扩展一并平移
+      const people = p.folks && p.folks.list;
+      for (const person of Array.isArray(people) ? people : []) {
+        if (!person) continue;
+        for (const place of [person.home, person.dest, person.kid && person.kid.school]) {
+          if (!place) continue;
+          sh(place);
+          if (Number.isInteger(place.z)) place.z = zmap(place.z);
+        }
+      }
       // 城市经济：载入后按新增范围调整统计口径（连续迁移时原范围随后续步骤平移）
       if (p.macro) { const ar = p.macro.areaRebase; if (ar && ar.oldBox && from > from0) { ar.oldBox[0] += dx; ar.oldBox[1] += dy; } else p.macro.areaRebase = { from: from, oldBox: [dx, dy, oW, oH] }; }
       const prevNote = p.mapUpgrade && from > from0 ? p.mapUpgrade.note : '';

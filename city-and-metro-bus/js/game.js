@@ -379,6 +379,9 @@
       }
 
       if (committed) {
+        if (monthEnd && CM.Folks && this === CM.game) {
+          try { CM.Folks.monthly(this); } catch (error) { console.warn('市民故事更新失败', error); }
+        }
         for (const [event, value] of notices) this.emit(event, value);
         return;
       }
@@ -1140,6 +1143,7 @@
       favs: this.favs,
       tutorial: this.tutorial || null,
       voices: this.voices || undefined,   // 地铁圈：关注的市民与他们的动态存档（v2.3）
+      folks: this.folks ? { ...this.folks, netVersion: this.netVersion } : undefined,   // 市民人物志（v3.4）：人设、家与去处、通勤历史与动态
       congRef: this.congRef ? Game.packCong(this.congRef) : undefined,   // 拥堵变化的对比基准（v2.3）
       milestones: this.milestones || null,
       mapInit: this.mapInit || null,
@@ -1162,6 +1166,7 @@
       if (CM.Traits) CM.Traits.Arch.attach(g);
       if (s.tutorial) g.tutorial = s.tutorial;
       if (s.voices) g.voices = s.voices;
+      if (CM.Folks) CM.Folks.restore(g, s.folks);
       g.congRef = Game.unpackCong(s.congRef);
       g.clock = Object.assign({}, s.clock);
       if (CM.applyMoneyEra) CM.applyMoneyEra(g.clock.y, g.clock.m);
