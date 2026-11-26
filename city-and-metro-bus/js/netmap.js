@@ -581,10 +581,13 @@
   const TYPE_NAME = { underground: '地下', surface: '地面', elevated: '高架' };
   const pathPoints = function (pts) { const digits = geographic ? 2 : 3; return 'M' + pts.map(function (p) { return p[0].toFixed(digits) + ' ' + p[1].toFixed(digits); }).join('L'); };
   function routeD(entry) { return entry.route ? roundRoute(entry.route.raw, entry.route.radius, false).d : pathPoints(entry.screen); }
-  function geoSeg(entry, base, net, width) {
+  function geoSeg(entry, base, net, width, separator) {
     const s = entry.seg, L = net.lines[s.line];
     const d = routeD(entry);
-    let out = '<g data-line="' + s.line + '" data-segment="' + s.id + '"><title>' + U.esc(L.name + ' · ' + TYPE_NAME[s.type] + '区间') + '</title><path d="' + d + '" stroke="' + AX.line(L) + '" stroke-width="' + width + '"/>';
+    let out = '<g data-line="' + s.line + '" data-segment="' + s.id + '"><title>' + U.esc(L.name + ' · ' + TYPE_NAME[s.type] + '区间') + '</title>';
+    // 共线内层线先垫一圈纸色分隔缝，再画本色线（放在本 g 内，图层重排时跟随本线路一起移动）。
+    if (separator) out += '<path d="' + d + '" fill="none" stroke="' + separator + '" stroke-width="' + (width + 2.6) + '" stroke-linecap="round" stroke-linejoin="round"/>';
+    out += '<path d="' + d + '" stroke="' + AX.line(L) + '" stroke-width="' + width + '"/>';
     if (s.type === 'elevated') out += '<path d="' + d + '" class="nm-elev"/>';
     else if (s.type === 'surface') out += '<path d="' + d + '" class="nm-surf"/>';
     return out + '</g>';
@@ -895,10 +898,13 @@
         if (!groups.has(key)) groups.set(key, []); groups.get(key).push(track);
       }
       for (const group of groups.values()) {
-        const widths = group.map(function (track, i) { return (track.seg.type === 'elevated' ? 9.5 : 8) + (group.length - 1 - i) * 4; });
-        const entry = group[0], d = routeD(entry);
+        // 共线同心色带：加大相邻线宽差（4→6px），并在两层之间垫一圈纸色分隔缝，
+        // 让每条共线线路都能分辨（原来 2 线只差 4px，内线每边仅露出 2px，几乎看不出）。
+        const gapW = group.length > 1 ? 6 : 0;
+        const widths = group.map(function (track, i) { return (track.seg.type === 'elevated' ? 9.5 : 8) + (group.length - 1 - i) * gapW; });
+        const entry = group[0], d = routeD(entry), paper = palette().paper;
         casing += '<path data-lines="' + group.map(function (track) { return track.seg.line; }).join(' ') + '" d="' + d + '" stroke-width="' + (Math.max.apply(null, widths) + 3) + '"/>';
-        group.forEach(function (track, i) { routes += geoSeg(track, base, net, widths[i]); });
+        group.forEach(function (track, i) { routes += geoSeg(track, base, net, widths[i], i > 0 ? paper : null); });
       }
     }
     svg += '<g class="nm-casing" fill="none" stroke-linecap="round" stroke-linejoin="round">' + casing + '</g><g class="nm-lines" stroke-linecap="round" stroke-linejoin="round" fill="none">' + routes + '</g>';
