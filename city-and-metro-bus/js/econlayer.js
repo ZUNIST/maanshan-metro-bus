@@ -65,21 +65,47 @@
       // 大区聚合：把片区按质心归到最近的区名锚点
       const anchors = districtAnchors(city);
       const regionD = new Int16Array(regions.length).fill(-1);
-      let districts;
+      let districts, dmap = null;
       if (anchors.length > 1) {
-        for (const r of list) {
+        const nearest = function (x, y) {
           let best = Infinity, bi = 0;
-          for (let i = 0; i < anchors.length; i++) { const d = Math.hypot(r.x - anchors[i].x, r.y - anchors[i].y); if (d < best) { best = d; bi = i; } }
+          for (let i = 0; i < anchors.length; i++) { const d = Math.hypot(x - anchors[i].x, y - anchors[i].y); if (d < best) { best = d; bi = i; } }
+          return bi;
+        };
+        for (const r of list) {
+          const bi = nearest(r.x, r.y);
           const a = anchors[bi]; a.pop += r.pop; a.jobs += r.jobs; a.gdp += r.gdp; a.children.push(r.k); r.d = bi; regionD[r.k] = bi;
         }
-        districts = anchors.map(function (a) { return { name: a.name, x: a.x, y: a.y, pop: a.pop, jobs: a.jobs, gdp: a.gdp, children: a.children, major: true }; }).filter(function (a) { return a.pop > 0 || a.jobs > 0; });
+        // 还没有人口 / 岗位的片区（未开发地、管制用地）也按质心归到最近的大区：
+        // 填色才是一整片，不会在城区里留下空斑；境外片区（empty）不归，保持底图原样。
+        for (let k = 0; k < regions.length; k++) {
+          const r = regions[k];
+          if (regionD[k] >= 0 || !r || r.empty || !isFinite(r.cx) || !isFinite(r.cy)) continue;
+          regionD[k] = nearest(r.cx, r.cy);
+        }
+        // 一个区都没有人口时会被剔掉，序号要重排，否则 cellD 会指错区
+        const keep = [];
+        districts = [];
+        for (let i = 0; i < anchors.length; i++) {
+          const a = anchors[i];
+          if (!(a.pop > 0 || a.jobs > 0)) { keep[i] = -1; continue; }
+          keep[i] = districts.length;
+          districts.push({ name: a.name, x: a.x, y: a.y, pop: a.pop, jobs: a.jobs, gdp: a.gdp, children: a.children, major: true });
+        }
+        dmap = keep;
       } else {
         districts = list.map(function (r, i) { regionD[r.k] = i; return Object.assign({}, r, { major: true, children: [r.k] }); });
         for (const r of list) r.d = r.k;
       }
-      // 每格归属的大区序号（着色用）
-      const cellD = new Uint8Array(N);
-      for (let c = 0; c < N; c++) { const d = regionD[city.region[c]]; cellD[c] = d < 0 ? 0 : d; }
+      // 每格归属的大区序号（着色用）。没有归属的格子（境外邻市、水域等无人片区）记 255，
+      // 图层不给它们上色，底图的地理样貌照常显示（v3.71）。
+      const cellD = new Uint8Array(N).fill(255);
+      for (let c = 0; c < N; c++) {
+        const d = regionD[city.region[c]];
+        if (d < 0) continue;
+        const m = dmap ? dmap[d] : d;
+        if (m >= 0) cellD[c] = m;
+      }
       const data = { list: list, districts: districts, cellD: cellD, total: { pop: tpop, jobs: tjobs, gdp: gdp }, err: tjobs > 0 ? 'jobs' : 'pop', key: key };
       this._cache = { key: key, data: data };
       return data;

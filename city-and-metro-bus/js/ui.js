@@ -1796,14 +1796,14 @@
         opts('econK', [['gdp', '按 GDP'], ['pop', '按人口']]);
         const ec = CM.EconLayer && CM.EconLayer.stats(self.g());
         if (ec) {
-          const grads = [[110, 176, 214], [232, 168, 96], [150, 190, 130], [206, 146, 178], [152, 152, 208], [214, 194, 120]];
+          const grads = CM.Renderer.ECON_COLORS || [[222, 118, 76]];
           for (let i = 0; i < Math.min(4, ec.districts.length); i++) {
             const c = grads[i % grads.length], d = ec.districts[i], v = R.layerOpt.econK === 'pop' ? CM.EconLayer.popText(d.pop) : CM.EconLayer.gdpText(d.gdp);
             box.appendChild(h('div', { class: 'li' }, h('span', { class: 'swatch', style: { background: 'rgb(' + c.join(',') + ')' } }), d.name + ' · ' + v));
           }
           box.appendChild(h('div', { class: 'tiny muted', style: { margin: '4px 0 2px' } }, '全区 ' + (R.layerOpt.econK === 'pop' ? CM.EconLayer.popText(ec.total.pop) : CM.EconLayer.gdpText(ec.total.gdp)) + ' · 共 ' + ec.districts.length + ' 个区县'));
         }
-        note = '按区县着色并标出 GDP、常住人口与人均 GDP：区县 GDP = 全城 GDP × 该区岗位占全城岗位的比例（宏观模型口径，随经济与城市发展变化）；人口为城镇人口，人均 GDP = 区 GDP ÷ 区人口。地图放大后还会标出各片区明细。'; break;
+        note = '按区县连续着色并标出 GDP、常住人口与人均 GDP：区县 GDP = 全城 GDP × 该区岗位占全城岗位的比例（宏观模型口径，随经济与城市发展变化）；人口为城镇人口，人均 GDP = 区 GDP ÷ 区人口。地图放大后还会标出各片区明细。'; break;
       }
       case 'jobs': li('#f0963c', '以住宅为主'); li('#9aa0b0', '职住混合'); li('#3468d6', '以就业岗位为主'); note = '颜色越深，人口与岗位越密集。'; break;
       case 'cong': {

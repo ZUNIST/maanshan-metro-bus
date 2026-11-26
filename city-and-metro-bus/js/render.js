@@ -19,9 +19,23 @@
     meta: '500 11px ' + FONT, road: '500 10.5px ' + FONT, title: '700 12.5px ' + FONT,
   };
   const UNDER_DEPTH = 4;                     // 地下视图中地下线路的视觉下沉倍数
-  // 区域经济图层：区县区分色。刻意用暖色 / 紫红系，避开地图底图的水体蓝（约 #94c0e3）与森林绿（约 #aad4b4 / #86bc80），
-  // 否则分区色容易和江河、山林混在一起分不清；各色彼此也保持明显差异。
-  const ECON_COLORS = [[235, 160, 90], [214, 110, 105], [178, 130, 200], [225, 150, 190], [225, 190, 95], [190, 145, 110], [150, 120, 190], [230, 140, 120], [205, 160, 185], [240, 175, 110]];
+  // 区域经济图层：区县区分色（v3.71）。整片连续覆盖，水体、林地、公园一样上色，
+  // 所以色相必须和底图的水体蓝（约 #94c0e3，色相约 205°）与森林绿（约 #aad4b4 / #86bc80，色相约 100–140°）拉开：
+  // 只用橙—砖红—玫红—洋红—金—褐这一段暖色（色相 340°–50°），完全不含蓝、青、绿。
+  // 相邻区县在色相与明度上都错开，避免两块颜色糊成一片。
+  const ECON_COLORS = [
+    [222, 118, 76],    // 陶橙
+    [196, 84, 122],    // 玫红
+    [214, 164, 72],    // 金
+    [176, 96, 78],     // 砖褐
+    [206, 96, 168],    // 洋红
+    [228, 156, 96],    // 杏
+    [162, 86, 102],    // 绛
+    [186, 138, 62],    // 赭
+    [232, 132, 140],   // 珊瑚
+    [152, 112, 74],    // 深棕
+    [224, 178, 118],   // 沙金
+  ];
 
   // 地图主题：浅色为「云雾淡彩」风格（浅蓝白底、柔和水面、水墨山峦、玻璃色楼宇）；深色为同风格夜景
   const THEMES = {
@@ -3170,23 +3184,9 @@
         const rg = city.regions[city.region[c]];
         if (rg.scenic) { col = [120, 170, 110]; a = 0.25; }
         else if (city.cellLocked(c)) { col = [150, 150, 150]; a = 0.25; }
-      } else if (lay === 'econ' && econ) {
-        const reg = city.regions[city.region[c]];
-        // 境外区域（empty，如南京/芜湖/合肥/滁州）统一用不透明白色覆盖，不参与分区统计与设色
-        if (reg && reg.empty) { col = TH.night ? [40, 48, 60] : [255, 255, 255]; a = 1; }
-        else {
-          // 区县分区设色：同区同色，深浅随该区 GDP（或人口）在全区的相对高低。
-          // 水体与林地 / 公园保留底图原色，不叠分区色，避免和蓝绿底图混在一起。
-          const wood = city.wood ? city.wood[c] : 0, park = city.parkCov ? city.parkCov[c] : 0;
-          const di = econ.cellD[c] || 0, dst = econ.districts[di];
-          if (dst && city.lu[c] !== CM.LU.WATER && city.landFrac[c] >= 0.5 && wood < 0.35 && park < 0.35) {
-            const base = ECON_COLORS[di % ECON_COLORS.length];
-            const vals = econ.districts.map(function (q) { return LO.econK === 'pop' ? q.pop : q.gdp; });
-            const hi = Math.max.apply(null, vals) || 1, t = 0.45 + 0.55 * Math.sqrt((LO.econK === 'pop' ? dst.pop : dst.gdp) / hi);
-            col = base.map(function (v) { return Math.round(v * (0.78 + 0.32 * t)); });
-            a = 0.16 + 0.20 * t;
-          }
-        }
+      } else if (lay === 'econ') {
+        // 区域经济（v3.71）：不再在这里按格涂色，改由 drawEcon 用矢量轮廓整片填充（见 econShapes），
+        // 免得 250 m 的格子把区界涂成方块阶梯、也免得水体 / 林地与底图混出深浅不匀的斑块。
       }
       if (col) { col = AX.rgb(col); const o = c * 4; d[o] = col[0]; d[o + 1] = col[1]; d[o + 2] = col[2]; d[o + 3] = a * 255; }
     }
@@ -3200,6 +3200,101 @@
       const sig = this.devScale ? this.devScale.key + ':' + this.devScale.any + ':' + Math.round(this.devScale.full * 100) : '';
       if (sig !== this._devSig) { this._devSig = sig; if (CM.ui && CM.ui.layer === 'dev' && CM.ui.renderDock) CM.ui.renderDock(); }
     }
+  };
+  // 区域经济图层（v3.71）：区县轮廓与配色。
+  // 按格归属画的话，边界只能落在 250 m 的格子边上，放大后是一圈方块阶梯；这里改用 marching squares
+  // 把每区的外轮廓描成闭合多边形，再切角两遍磨圆，整片一次填充，边界就干净了。
+  // 同一个区连同江河、水库、山林、公园一起覆盖，色板本身避开蓝绿，所以不会和水体、林地混色。
+  Renderer.prototype.econShapes = function (econ, city) {
+    const LO = this.layerOpt, key = (city.uid || 0) + ':' + city.version + ':' + econ.key + ':' + LO.econK;
+    if (this._econShapes && this._econShapes.key === key) return this._econShapes;
+    const W = city.W, H = city.H, cellD = econ.cellD, nd = econ.districts.length;
+    // 每区颜色与深浅：深浅按该区 GDP（或人口）相对全城最高区的比值开方，差异不至于都挤在浅色端
+    const vs = econ.districts.map(function (q) { return LO.econK === 'pop' ? q.pop : q.gdp; });
+    const hi = Math.max.apply(null, vs) || 1;
+    const fill = econ.districts.map(function (q, i) {
+      const t = 0.45 + 0.55 * Math.sqrt(U.clamp((LO.econK === 'pop' ? q.pop : q.gdp) / hi, 0, 1));
+      const base = ECON_COLORS[i % ECON_COLORS.length];
+      return { col: base.map(function (v) { return Math.round(v * (0.78 + 0.3 * t)); }), a: 0.2 + 0.2 * t };
+    });
+    // 转角倒圆（半径约 0.22 格）：直边仍落在格子边界上，相邻两区共用的一条边完全重合，不会有缝；
+    // 只有转角处各让一点，放大看是圆润的折线，而不是 125 m 的方块阶梯。
+    const roundPath = function (path, ring) {
+      const n = ring.length, R = 0.22;
+      path.moveTo((ring[0][0] + ring[1][0]) / 2, (ring[0][1] + ring[1][1]) / 2);   // 从第一条边的中点起笔，保证每条边都完整
+      for (let i = 1; i <= n; i++) {
+        const a = ring[(i - 1) % n], b = ring[i % n], c = ring[(i + 1) % n];
+        const l1 = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-6, l2 = Math.hypot(c[0] - b[0], c[1] - b[1]) || 1e-6;
+        const r = Math.min(R, l1 * 0.45, l2 * 0.45);
+        const p1 = [b[0] - (b[0] - a[0]) / l1 * r, b[1] - (b[1] - a[1]) / l1 * r];
+        const p2 = [b[0] + (c[0] - b[0]) / l2 * r, b[1] + (c[1] - b[1]) / l2 * r];
+        path.lineTo(p1[0], p1[1]);
+        path.quadraticCurveTo(b[0], b[1], p2[0], p2[1]);
+      }
+      path.closePath();
+    };
+    const list = [];
+    for (let k = 0; k < nd; k++) {
+      const GW = W + 2, GH = H + 2;   // 外侧补一圈「不属于本区」，轮廓自然闭合
+      const inside = function (i, j) { return i >= 0 && j >= 0 && i < W && j < H && cellD[j * W + i] === k; };
+      const v = new Uint8Array(GW * GH);
+      for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) if (inside(i - 1, j - 1)) v[j * GW + i] = 1;
+      const pts = new Map(), segs = [], at = new Map();
+      // 采样点取格子中心：格点 (i,j) 对应世界坐标 (i-0.5, j-0.5)；边上的交点落在两格中心的中间
+      const hp = function (i, j) { const q = (j * GW + i) * 2; if (!pts.has(q)) pts.set(q, [i, j - 0.5]); return q; };
+      const vp = function (i, j) { const q = (j * GW + i) * 2 + 1; if (!pts.has(q)) pts.set(q, [i - 0.5, j]); return q; };
+      const seg = function (k1, k2) { const s = segs.length >> 1; segs.push(k1, k2); for (const q of [k1, k2]) { const l = at.get(q); if (l) l.push(s); else at.set(q, [s]); } };
+      for (let j = 0; j + 1 < GH; j++) for (let i = 0; i + 1 < GW; i++) {
+        const va = v[j * GW + i], vb = v[j * GW + i + 1], vc = v[(j + 1) * GW + i + 1], vd = v[(j + 1) * GW + i];
+        const idx = (va ? 8 : 0) | (vb ? 4 : 0) | (vc ? 2 : 0) | (vd ? 1 : 0);
+        if (idx === 0 || idx === 15) continue;
+        if (idx === 1 || idx === 14) seg(vp(i, j), hp(i, j + 1));
+        else if (idx === 2 || idx === 13) seg(hp(i, j + 1), vp(i + 1, j));
+        else if (idx === 3 || idx === 12) seg(vp(i, j), vp(i + 1, j));
+        else if (idx === 4 || idx === 11) seg(hp(i, j), vp(i + 1, j));
+        else if (idx === 6 || idx === 9) seg(hp(i, j), hp(i, j + 1));
+        else if (idx === 7 || idx === 8) seg(hp(i, j), vp(i, j));
+        else {   // 鞍点：看四角平均决定哪两角相连
+          const mid = (va + vb + vc + vd) / 4 >= 0.5;
+          if ((idx === 5) === mid) { seg(hp(i, j), vp(i, j)); seg(hp(i, j + 1), vp(i + 1, j)); } else { seg(hp(i, j), vp(i + 1, j)); seg(vp(i, j), hp(i, j + 1)); }
+        }
+      }
+      // 把线段接成闭合环，并去掉直边上的冗余点（只留转角），再切角磨圆
+      const used = new Uint8Array(segs.length >> 1);
+      for (let s0 = 0; s0 < used.length; s0++) {
+        if (used[s0]) continue;
+        used[s0] = 1;
+        const start = segs[2 * s0]; let cur = segs[2 * s0 + 1];
+        const ring = [pts.get(start)];
+        while (cur !== start) {
+          ring.push(pts.get(cur));
+          let nx = -1; for (const s of at.get(cur)) if (!used[s]) { nx = s; break; }
+          if (nx < 0) break;
+          used[nx] = 1; cur = segs[2 * nx] === cur ? segs[2 * nx + 1] : segs[2 * nx];
+        }
+        if (ring.length < 4) continue;
+        const path = new Path2D();
+        roundPath(path, ring);
+        list.push({ di: k, path: path });
+      }
+    }
+    this._econShapes = { key: key, list: list, fill: fill };
+    return this._econShapes;
+  };
+  Renderer.prototype.drawEcon = function (ctx) {
+    const city = this.game.city, econ = this.econInfo || (CM.EconLayer ? CM.EconLayer.stats(this.game) : null);
+    if (!econ || !econ.districts.length) return;
+    this.econInfo = econ;
+    const S = this.econShapes(econ, city);
+    // 整区一次填满：区内的江河、水库、山林、公园同样上色，不在区里留空洞；
+    // 相邻两区共用同一条边，直边完全重合，所以不需要描边补缝，也就不会出现加深的边线。
+    ctx.save();
+    for (const s of S.list) {
+      const f = S.fill[s.di]; if (!f) continue;
+      ctx.globalAlpha = f.a; ctx.fillStyle = 'rgb(' + f.col.join(',') + ')';
+      ctx.fill(s.path);
+    }
+    ctx.restore();
   };
   // 城市发展图层的地图标注（v2.3）：变化最大的片区写明增减（人口、岗位或新开发用地）；还没有变化时标出本阶段的重点发展片区
   Renderer.prototype.devLabelList = function (g, plan, min) {
@@ -3361,9 +3456,12 @@
     if (layerOn && ['pop', 'jobs', 'cover', 'region', 'fac', 'gap', 'dev', 'flow', 'mshare', 'bgt', 'econ'].indexOf(this.layer) >= 0) {
       this.buildHeat();
       setWorld();
-      ctx.imageSmoothingEnabled = true;
       ctx.globalAlpha = 1;
-      ctx.drawImage(this.heat, 0, 0, CFG.W, CFG.H);
+      if (this.layer === 'econ') this.drawEcon(ctx);   // 矢量轮廓填充，边界不是格子阶梯
+      else {
+        ctx.imageSmoothingEnabled = true;
+        ctx.drawImage(this.heat, 0, 0, CFG.W, CFG.H);
+      }
       ctx.globalAlpha = 1;
     }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -4224,6 +4322,8 @@
   const CONG_COLS = ['#33a660', '#f2bf3a', '#f27a24', '#d3203a'];
   const CONG_CUT = [1.15, 1.35, 1.60];
   Renderer.CONG_COLS = CONG_COLS;
+  // 区域经济图层的区县色板（图例与地图用同一份，颜色才对得上）
+  Renderer.ECON_COLORS = ECON_COLORS;
   // 拥堵变化（v2.3）：与对比基准相比的工作日早高峰拥堵比之差，分为明显缓解、缓解、基本不变、加重、明显加重
   const DIFF_COLS = ['#0f8a48', '#79c58a', 'rgba(128,138,154,0.5)', '#f0a03a', '#d3203a'], DIFF_COLS_AX = ['#1f5fbf', '#7aa7e0', 'rgba(128,138,154,0.5)', '#f0a35c', '#b3261e'];
   const DIFF_CUT = [-0.12, -0.03, 0.03, 0.12];
