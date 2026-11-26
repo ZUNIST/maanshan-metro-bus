@@ -1058,8 +1058,8 @@
     }
     // ---- v2.3 可选挑战与城市策略难题 ----
     if (t.type === 'budgetConnect') {
-      const c = this.evaluate(Object.assign({}, t, { type: 'connect' }), g), spent = Math.max(0, (g.econ.built || 0) - (t.spent0 || 0)), over = spent > t.budget + 0.5;
-      return { ok: c.ok && !over, dead: over, value: over ? 0 : c.value, text: c.text + ' · 已花 ' + U.fmtMoney(spent) + ' / 预算 ' + U.fmtMoney(t.budget) + (over ? '（已超预算）' : '') };
+      const c = this.evaluate(Object.assign({}, t, { type: 'connect' }), g), bill = budgetStatus(t, g);
+      return { ok: c.ok && !bill.over, dead: bill.over, value: bill.over ? 0 : c.value, text: c.text + ' · ' + bill.text };
     }
     if (t.type === 'lineCrowd') {
       const L = g.net.lines[t.line]; if (!L) return { ok: false, dead: true, value: 0, text: '线路已拆除' };
@@ -1177,8 +1177,9 @@
     }
     return null;
   };
-  Tasks.prepare = function (t, g) {
+  Tasks.prepare = function (t, g, issuing = false) {
     Tasks.alignFacDeadline(t);
+    if (issuing && t.type === 'budgetConnect') t.budgetFrom = g.buildSeq || 0;   // 预算凭证：只统计本任务开工之后的建设支出
     // 旧任务在新规则下补判一次，已经标为可选的任务保留原待遇。
     if ((t.kind === 'hist' || t.kind === 'dyn') && t.scenicChecked !== SCENIC_TASK_RULE && g.city && g.city.region) {
       t.scenicChecked = SCENIC_TASK_RULE;
@@ -1228,6 +1229,82 @@
     let i0 = Infinity, i1 = -1;
     for (const a of anchors) best.stIdx.forEach(function (i, k) { const s = C.stations[i]; if (U.dist(s.x, s.y, a.x, a.y) <= a.r) { i0 = Math.min(i0, k); i1 = Math.max(i1, k); } });
     return { route: best, n: bn, all: bn === anchors.length, i0: i0, i1: i1 };
+  };
+  function budgetStatus(t, g) {
+    const scoped = Number.isSafeInteger(t.budgetFrom);
+    const spent = scoped ? Tasks.sectionSpend(g, t.anchors || [], t.budgetFrom, t.avoid) :
+      Math.max(0, (g.econ.built || 0) - (t.spent0 || 0));
+    const over = spent > t.budget + 0.5;
+    const prefix = scoped ? "这段线路已花 " : "已花 ";
+    return { over, text: prefix + U.fmtMoney(spent) + " / 预算 " + U.fmtMoney(t.budget) + (over ? "（已超预算）" : "") };
+  }
+
+  // 在连接最多锚点的网内，按区间长度找实际连接，允许沿步行换乘换线。
+  Tasks.sectionSpend = function (g, anchors, from, avoid) {
+    const C = g.compiled, M = CM.Metro, net = g.net, N = C.stations.length;
+    if (!anchors.length || !N) return 0;
+    const acc = g.model.net?.C === C ? g.model.net.acc : null;
+    const comp = avoid ? componentsAvoiding(C, acc, avoid) : stationComponents(C, acc);
+    const permitted = C.stations.map((s, i) => comp.serviced[i] && (!avoid || U.dist(s.x, s.y, avoid.x, avoid.y) > avoid.r));
+    const groups = new Map();
+    for (const a of anchors) {
+      const matches = new Map();
+      C.stations.forEach((s, i) => {
+        if (!permitted[i]) return;
+        const d = U.dist(s.x, s.y, a.x, a.y);
+        if (d > a.r) return;
+        const root = comp.find(i);
+        if (!matches.has(root)) matches.set(root, []);
+        matches.get(root).push({ i, d });
+      });
+      for (const [root, points] of matches) {
+        if (!groups.has(root)) groups.set(root, []);
+        groups.get(root).push(points);
+      }
+    }
+    let targets = [];
+    for (const group of groups.values()) if (group.length > targets.length) targets = group;
+    if (!targets.length) return 0;
+    const first = targets[0].reduce((a, b) => b.d < a.d ? b : a).i;
+    const edges = Array.from({ length: N }, () => []);
+    const link = (a, b, m, refs) => {
+      if (!permitted[a] || !permitted[b] || a === b) return;
+      const len = Math.max(1, m || 0);
+      edges[a].push({ i: b, len, refs }); edges[b].push({ i: a, len, refs });
+    };
+    for (const r of C.routes) {
+      if (r.svc) continue;
+      for (let i = 0; i < r.legSegs.length; i++) {
+        link(r.stIdx[i], r.stIdx[(i + 1) % r.stIdx.length], r.legLenM?.[i], r.legSegs[i]);
+      }
+    }
+    for (const tr of acc?.transfers || []) link(tr.a, tr.b, tr.m);
+    const dist = new Float64Array(N).fill(Infinity), prev = new Array(N), heap = new U.Heap(N);
+    dist[first] = 0; heap.push(0, first);
+    while (heap.n) {
+      const i = heap.pop(), d = heap.lastKey;
+      if (d > dist[i]) continue;
+      for (const e of edges[i]) if (d + e.len < dist[e.i]) {
+        dist[e.i] = d + e.len; prev[e.i] = { i, refs: e.refs }; heap.push(dist[e.i], e.i);
+      }
+    }
+    const stations = new Set(), tracks = new Set();
+    const cost = asset => (asset?.buildPayments || []).reduce((v, [seq, , amount]) => seq > from ? v + amount : v, 0);
+    let total = 0;
+    for (const candidates of targets) {
+      const nearest = candidates.reduce((a, b) => dist[b.i] + b.d * CFG.CELL_M < dist[a.i] + a.d * CFG.CELL_M ? b : a);
+      if (!Number.isFinite(dist[nearest.i])) continue;
+      for (let i = nearest.i; !stations.has(i); i = prev[i].i) {
+        stations.add(i); total += cost(net.stations[C.stations[i].id]);
+        if (!prev[i]) break;
+        for (const ref of prev[i].refs || []) {
+          const s = net.segments[ref.id]; if (!s) continue;
+          const key = M.trackKey(s);
+          if (!tracks.has(key)) { tracks.add(key); total += cost(s); }
+        }
+      }
+    }
+    return total;
   };
   const inRegions = function (g, ids) { const city = g.city, set = new Set(ids); return function (x, y) { const rg = city.regionAt(x, y); return !!rg && set.has(rg.id); }; };
   // 交通小区落在指定片区内的比例（小区可能跨片区）
@@ -1397,9 +1474,9 @@
         return { ok: v <= t.target, value: atMost(v, t.target), text: '换乘客流在' + t.areaName + '的比例 ' + pct(v) + ' / 目标 ≤ ' + pct(t.target) };
       }
       // ---- 成本收益 ----
-      case 'budget': {   // 任务发布以来的建设支出
-        const spent = Math.max(0, (g.econ.built || 0) - (t.spent0 || 0)), over = spent > t.budget + 0.5;
-        return { ok: !over, dead: over, value: over ? 0 : 1, text: '已花 ' + U.fmtMoney(spent) + ' / 预算 ' + U.fmtMoney(t.budget) + (over ? '（已超预算）' : '') };
+      case 'budget': {
+        const bill = budgetStatus(t, g);
+        return { ok: !bill.over, dead: bill.over, value: bill.over ? 0 : 1, text: bill.text };
       }
       case 'lineCost': {   // 这段线路（anchors 之间）按发布当年物价的造价：改用高架、取直、少设站都能省钱，改建后重新计算
         const rt = Tasks.routeThrough(g, t.anchors);
@@ -1607,7 +1684,7 @@
       const t = Object.assign({ kind: 'hist', status: 'active', issuedAt: [y, m], streak: 0 }, JSON.parse(JSON.stringify(tp)));
       if (dl0 < ym + P.minLeft) { t.deadline = ymPair(ym + P.minLeft); t.delayNote = '排队或等地点开放后才发布，期限顺延到 ' + t.deadline[0] + ' 年 ' + t.deadline[1] + ' 月（原为 ' + h.deadline[0] + ' 年 ' + h.deadline[1] + ' 月）'; }
       t.reward = t.reward * g.econ.costIndex(y);
-      Tasks.prepare(t, g);
+      Tasks.prepare(t, g, true);
       this.active.push(t);
       out.push({ type: 'issued', task: t });
     }
@@ -1642,7 +1719,7 @@
       t.reward = (t.rewardMonths || 1) * g.econ.grantQuota(y, m);
       delete t.months; delete t.rewardMonths;
       if (t.type === 'facShare') { const f = CM.Fac && CM.Fac.byId(t.fac); if (!f) continue; t.fare0 = Tasks.fareLevel(g.econ.fare); if (!t.basis) t.basis = Tasks.facBasis(f); }
-      Tasks.prepare(t, g);
+      Tasks.prepare(t, g, true);
       this.active.push(t);
       out.push({ type: 'issued', task: t });
     }
@@ -1940,7 +2017,7 @@
     if (c.cityId) self.issued['dyn:' + c.cityId] = 1;
     if (c.type === 'stationCrowd') cool.crowd = ym + 36;
     const t = Object.assign({ id: 'd' + (this.seq++), kind: 'dyn', status: 'active', issuedAt: [y, m], deadline: dl(Math.max(Tasks.PACE.dynMin, Math.round((c.months || 24) * Tasks.PACE.dynScale))), streak: 0 }, c);
-    return Tasks.prepare(t, g);
+    return Tasks.prepare(t, g, true);
   };
 
   Tasks.prototype.rebaseCongestion=function(g){
@@ -2101,9 +2178,9 @@
       t.desc = (L ? L.name : '这条线') + ' 按市郊线路考核：沿线 1.5 km 内步行 15 分钟可达本线车站的居民从 ' + U.fmtPct(coverage, 1) + ' 提高到 ' + U.fmtPct(t.target, 1) + '。';
       t.tips = ['在沿线居民多、离车站远的地方加站（在轨道上插站）', '把车站挪到住宅区中心，出入口离居民更近', '延伸到线路末端附近新开发的居住区'];
     } else if (t.type === 'lineEff') t.mode = 'urban';
-    if (t.type === 'budgetConnect') t.spent0 = g.econ.built || 0;
+    if (t.type === 'budgetConnect') t.budgetFrom = g.buildSeq || 0;
     if (t.type === 'combo') for (const p of t.parts) { delete p.base0; delete p.fare0; delete p.spent0; delete p.y0; if (p.gain || p.drop) delete p.target; }
-    Tasks.prepare(t, g);
+    Tasks.prepare(t, g, true);
     this.active.push(t);
     return t;
   };

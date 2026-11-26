@@ -430,7 +430,7 @@
       this.live.push(function () {
         const d2 = g.model.stDaily, dw = g.model.stDailyWk, de = g.model.stDailyWe;   // 每次读取最新统计（模型收敛过程中会不断替换）
         if (!d2 || !dw || !de || g.model.dailyStale || g.model.net.C !== C || k >= d2.inn.length) return;
-        const sub = function (a, b) { return '工作日 ' + U.fmtPeople(a) + ' · 周末 ' + U.fmtPeople(b); };
+        const sub = function (a, b) { return CM.Settings.get('detail') === 'pro' ? '工作日 ' + U.fmtPeople(a) + ' · 周末 ' + U.fmtPeople(b) : ''; };
         sIn.setV(U.fmtPeople(d2.inn[k]) + ' 人次', sub(dw.inn[k], de.inn[k])); sOut.setV(U.fmtPeople(d2.out[k]) + ' 人次', sub(dw.out[k], de.out[k])); sX.setV(U.fmtPeople(d2.xfer[k]) + ' 人次', sub(dw.xfer[k], de.xfer[k]));
         const zero = d2.inn[k] + d2.out[k] < 1;
         const reason = zero ? zeroWhy() : '';
@@ -473,7 +473,7 @@
       el.appendChild(this.sec('st-ops', '运营与费用', '', function () {
         const oi = g.econ.opsIndex(g.clock.y);
         const pw = g.model.stDailyWk, pe = g.model.stDailyWe;
-        return self.kv([['车站容量', U.fmtInt(cap) + ' 人次/小时'], ['日运营费用', U.fmtMoney(CFG.ops.stationDaily[C.stations[k].size] * oi)], ['建成时间', official.built ? official.built[0] + '年' + official.built[1] + '月' : '—'], ['高峰小时客流', pw && pe ? '工作日 ' + U.fmtInt(pw.peak[k]) + ' · 周末 ' + U.fmtInt(pe.peak[k]) + ' 人次' : U.fmtInt(sd.peak[k]) + ' 人次']]);
+        return self.kv([['车站容量', U.fmtInt(cap) + ' 人次/小时'], ['日运营费用', U.fmtMoney(CFG.ops.stationDaily[C.stations[k].size] * oi)], ['建成时间', official.built ? official.built[0] + '年' + official.built[1] + '月' : '—'], ['高峰小时客流', CM.Settings.get('detail') === 'pro' && pw && pe ? '工作日 ' + U.fmtInt(pw.peak[k]) + ' · 周末 ' + U.fmtInt(pe.peak[k]) + ' 人次' : U.fmtInt(sd.peak[k]) + ' 人次']]);
       }));
       el.appendChild(this.todBlock(id));
       el.appendChild(this.decorBlock(id));
@@ -654,11 +654,28 @@
     }
     if (stR <= 0.8 && !trains.length) return null;
     const box = h('div', { class: 'diag' }, h('div', { class: 'diag-h' }, CM.icon('warn'), '拥挤诊断'));
-    const item = function (level, title, text, actions) { box.appendChild(h('div', { class: 'diag-item lv-' + level }, h('b', null, title), h('div', { class: 'small' }, text), actions.filter(Boolean).length ? h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px', marginTop: '6px' } }, actions.filter(Boolean)) : null)); };
+    // 诊断条目（v3.4 图形化）：需求与能力画成一根条（竖线是能力上限），下面一句话说清楚问题；完整说明在「专业」信息里直接显示，「简洁」时可展开
+    const simple = CM.Settings.get('detail') !== 'pro';
+    const meter = function (m) {
+      if (!m) return null;
+      const r = Math.max(0, m.v), w = Math.min(1, r / 1.5), cls = r > 1 ? 'bad' : (r > 0.85 ? 'warn' : 'good');
+      return h('div', { class: 'dg-meter ' + cls }, h('div', { class: 'dg-bar' }, h('i', { style: { width: (w * 100).toFixed(1) + '%' } }), h('em', { style: { left: (100 / 1.5).toFixed(1) + '%' } })),
+        h('div', { class: 'dg-nums' }, h('b', null, U.fmtPct(r, 0)), h('span', null, m.label)));
+    };
+    const item = function (level, title, text, actions, m, short, chips) {
+      const acts = actions.filter(Boolean), more = simple && short ? h('details', { class: 'dg-more' }, h('summary', null, '详细说明'), h('div', { class: 'small' }, text)) : null;
+      box.appendChild(h('div', { class: 'diag-item lv-' + level }, h('b', null, title), meter(m),
+        chips && chips.length ? h('div', { class: 'dg-chips' }, chips.map(function (c) { return h('span', { class: 'dg-chip' }, CM.icon(c[0], 12), c[1]); })) : null,
+        h('div', { class: 'small' }, simple && short ? short : text), more,
+        acts.length ? h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px', marginTop: '6px' } }, acts) : null));
+    };
     const divert = h('button', { class: 'btn sm ghost', onclick: function () { self.showDiversion(st); } }, '查看可分流方向');
     if (stR > 0.8) {
       const up = st.size !== topSize ? h('button', { class: 'btn sm primary', onclick: function () { g.edit(function (n) { if (n.stations[id]) n.stations[id].size = next(st.size); }); self.toast('已在草案中把「' + st.name + '」升级为' + sizeNm(next(st.size)) + '车站', 'info'); } }, '升级为' + sizeNm(next(st.size)) + '车站') : null;
-      item(stR > 1 ? 'bad' : 'warn', stR > 1 ? '车站容量不足' : '车站接近饱和', '工作日高峰小时进出站与换乘约 ' + U.fmtInt(sd.peak[k]) + ' 人次，' + sizeNm(st.size) + '车站能力 ' + U.fmtInt(cap) + ' 人次/时（' + U.fmtPct(stR, 0) + '）。' + (stR > 1 ? '乘客在闸机、楼梯与换乘通道排队，进出站变慢。' : '') + (st.size === topSize ? (stSys !== 'metro' ? '已是最大规模（' + sizeNm(st.size) + '），只能通过新线路分流。' : (st.size === 'XL' ? '已是超大型车站，只能通过新线路分流。' : (isFinite(M.xlYear()) ? '已是大型车站：' + M.xlYear() + ' 年起可升级为超大型，现在只能通过新线路分流。' : '已是大型车站，只能通过新线路分流。'))) : ''), [up, divert]);
+      item(stR > 1 ? 'bad' : 'warn', stR > 1 ? '车站容量不足' : '车站接近饱和', '工作日高峰小时进出站与换乘约 ' + U.fmtInt(sd.peak[k]) + ' 人次，' + sizeNm(st.size) + '车站能力 ' + U.fmtInt(cap) + ' 人次/时（' + U.fmtPct(stR, 0) + '）。' + (stR > 1 ? '乘客在闸机、楼梯与换乘通道排队，进出站变慢。' : '') + (st.size === topSize ? (stSys !== 'metro' ? '已是最大规模（' + sizeNm(st.size) + '），只能通过新线路分流。' : (st.size === 'XL' ? '已是超大型车站，只能通过新线路分流。' : (isFinite(M.xlYear()) ? '已是大型车站：' + M.xlYear() + ' 年起可升级为超大型，现在只能通过新线路分流。' : '已是大型车站，只能通过新线路分流。'))) : ''), [up, divert],
+        { v: stR, label: U.fmtInt(sd.peak[k]) + ' / ' + U.fmtInt(cap) + ' 人次/时（工作日高峰）' },
+        stR > 1 ? '高峰进出站与换乘超过车站能力，乘客在闸机和楼梯排队。' + (st.size !== topSize ? '可以升级车站。' : '需要新线路分流。') : '高峰进出站与换乘接近车站能力。',
+        [['station', sizeNm(st.size) + '车站']]);
     }
     for (const t of trains) {
       const rt = t.rt, w = t.w, A = C.stations[w.a], B = C.stations[w.b];
@@ -695,7 +712,10 @@
         : (sys === 'bus' ? '公交每站只停 1 辆，无法加长；加密班次或增设平行线路分流。'
           : sys === 'tram' ? '电车编组受服务等级限制，升级车站不能加长；加密班次或增设平行线路分流。'
           : '已是最长编组，只能修建平行线路分流。');
-      item('bad', '列车运力不足 · ' + rt.label, A.name + '—' + B.name + ' 区间工作日' + (w.p === 0 ? '早' : '晚') + '高峰断面约 ' + U.fmtInt(w.load) + ' 人/时，超过运力 ' + U.fmtInt(w.capH) + ' 人/时（' + U.fmtNum(w.freq, 1) + ' 列/时' + (atMax ? '，已达发车上限' : '') + '，' + minCars + unit + '）。' + advice, [locate, lengthen, divert]);
+      item('bad', '列车运力不足 · ' + rt.label, A.name + '—' + B.name + ' 区间工作日' + (w.p === 0 ? '早' : '晚') + '高峰断面约 ' + U.fmtInt(w.load) + ' 人/时，超过运力 ' + U.fmtInt(w.capH) + ' 人/时（' + U.fmtNum(w.freq, 1) + ' 列/时' + (atMax ? '，已达发车上限' : '') + '，' + minCars + unit + '）。' + advice, [locate, lengthen, divert],
+        { v: w.lf, label: U.fmtInt(w.load) + ' / ' + U.fmtInt(w.capH) + ' 人/时（' + A.name + '—' + B.name + '）' },
+        (w.p === 0 ? '早' : '晚') + '高峰这一段坐不下。' + (canLengthen ? '加长编组最直接。' : (sys === 'bus' ? '公交不能加长，加密班次或增设平行线路。' : (sys === 'tram' ? '电车不能加长编组，加密班次或增设平行线路。' : (atMax ? '车次和编组都到上限，需要平行线路分流。' : '可以加开列车。')))),
+        [['train', U.fmtNum(w.freq, 1) + ' 列/时' + (atMax ? ' · 已到上限' : '')], ['metro', minCars + unit]]);
     }
     return box;
   };
