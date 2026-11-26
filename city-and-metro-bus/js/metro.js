@@ -457,6 +457,53 @@
     if (!fwd) pts.reverse();
     return (fwd ? s.a + '|' + s.b : s.b + '|' + s.a) + '|' + s.type + (s.curve === 'smooth' ? '|s' : s.curve === 'arc' ? '|a' : '') + '|' + pts.map(function (p) { return p[0].toFixed(3) + ',' + p[1].toFixed(3); }).join(';');
   };
+  // 建设凭证随车站和物理轨道保存。编号标识同一笔费用，复制到共线区段时只计一次。
+  function mergeBuildPayments(list, overlap) {
+    const merged = new Map();
+    for (const part of list) {
+      const local = new Map();
+      for (const [seq, ref, amount] of part || []) {
+        const key = seq + ":" + ref, prev = local.get(key);
+        local.set(key, [seq, ref, (prev?.[2] || 0) + amount]);
+      }
+      for (const [key, [seq, ref, amount]] of local) {
+        const prev = merged.get(key)?.[2] || 0;
+        merged.set(key, [seq, ref, overlap ? Math.max(prev, amount) : prev + amount]);
+      }
+    }
+    return Array.from(merged.values());
+  }
+  M.recordBuildPayments = function (net, items, seq) {
+    const charges = new Map();
+    const add = (ref, amount) => {
+      if (amount > 0 && (net.segments[ref] || net.stations[ref])) charges.set(ref, (charges.get(ref) || 0) + amount);
+    };
+    for (const { ref, amount, trackShares } of items) {
+      if (trackShares) for (const [id, share] of trackShares) add(id, amount * share);
+      else add(ref, amount);
+    }
+    for (const [ref, amount] of charges) {
+      const asset = net.segments[ref] || net.stations[ref];
+      asset.buildPayments = (asset.buildPayments || []).concat([[seq, ref, amount]]);
+    }
+    const shared = new Map();
+    for (const seg of Object.values(net.segments)) {
+      const key = M.trackKey(seg);
+      let parts = shared.get(key);
+      if (!parts) shared.set(key, parts = []);
+      parts.push(seg);
+    }
+    for (const parts of shared.values()) {
+      if (parts.length < 2 || !parts.some(seg => seg.buildPayments?.length)) continue;
+      const paid = mergeBuildPayments(parts.map(seg => seg.buildPayments), true);
+      for (const seg of parts) seg.buildPayments = paid;
+    }
+  };
+  function splitBuildPayments(seg, first, second, share) {
+    if (!seg.buildPayments?.length) return;
+    first.buildPayments = seg.buildPayments.map(([seq, ref, amount]) => [seq, ref, amount * share]);
+    second.buildPayments = seg.buildPayments.map(([seq, ref, amount]) => [seq, ref, amount - amount * share]);
+  }
   // 与 seg 共用轨道的其他线路区段；rev 表示其方向与 seg 相反
   M.coTrackSegs = function (net, seg) {
     if (!seg) return [];

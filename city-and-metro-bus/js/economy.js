@@ -179,8 +179,18 @@
   };
   // 早期网页版可能把未发完拨款的月初当作推进完成并保存。
   Economy.prototype.restoreOpeningGrant = function (clock) {
-    const { y, m, d } = clock, cur = this.cur, last = this.ledger[this.ledger.length - 1];
-    if (this.mode !== 'challenge' || this.failed || d !== 1 || cur.y !== y || cur.m !== m ||
+    const { y, m, d } = clock, last = this.ledger[this.ledger.length - 1];
+    if (d !== 1) return;
+    const prior = this.cur;
+    // v2.9.6：旧版可能在上月封账后、新月开账前保存。只有能确认当前行是同一张已封账的账单时才补开新月。
+    if (last?.closed && prior.closed && prior.y === last.y && prior.m === last.m &&
+        U.ymIndex(last.y, last.m) + 1 === U.ymIndex(y, m) &&
+        last.days === U.daysInMonth(last.y, last.m) && Number.isFinite(this.funds) && last.end === this.funds &&
+        (last.capexEnd || 0) === this.capex && JSON.stringify(last) === JSON.stringify(prior)) {
+      this.openMonth(y, m);
+    }
+    const cur = this.cur;
+    if (this.mode !== 'challenge' || this.failed || cur.y !== y || cur.m !== m ||
         cur.closed || cur.days !== 0 || cur.grant !== 0 || !last?.closed ||
         U.ymIndex(last.y, last.m) + 1 !== U.ymIndex(y, m)) return;
     if (this.flow.some(function (entry) { return entry.kind === 'grant' && entry.y === y && entry.m === m; })) return;
@@ -777,9 +787,21 @@
   };
   // 设施能否由玩家接驳（v2.2 修正）：场地边缘约 600 m 内存在可以合法设站的位置（含风景区景区站与未开放区域规则）；
   // 只为能完成的设施发布接驳任务。结果按设施与年份缓存
-  const servCache = new Map();
-  Tasks.facServable = function (city, f) {
+  // 上游 v3.3 修正（珠海渔女的任务修不了地铁）：能设站还不够，那里还要有步行道路（与客流模型的进站规则一致：车站所在格的四角
+  // 或 2 格内有步行路口），设施的出入口也要接上道路（fn.link：立在海中礁石上的雕像、没有街道的农田里的区域设施都接不上）
+  const servCache = new Map(); let servWalk = null;
+  const walkable = function (city, x, y) {
+    const w = city.walk; if (!w) return true;
+    const VW = city.VW, ci = Math.floor(x), cj = Math.floor(y), lim = CM.CFG.walk.maxAccessM * 0.5;
+    const deg = function (i, j) { return i < 0 || j < 0 || i >= VW || j * VW + i >= w.deg.length ? 0 : w.deg[j * VW + i]; };
+    if (deg(ci, cj) || deg(ci + 1, cj) || deg(ci, cj + 1) || deg(ci + 1, cj + 1)) return true;
+    for (let j = cj - 2; j <= cj + 3; j++) for (let i = ci - 2; i <= ci + 3; i++) if (deg(i, j) && U.dist(x, y, i, j) * CM.CFG.CELL_M * 1.3 <= lim) return true;
+    return false;
+  };
+  Tasks.facServable = function (city, f, fn) {
     if (f.ext) return true;
+    if (servWalk !== city.walk) { servCache.clear(); servWalk = city.walk; }   // 街道随城市发展增加：步行网络重建后重新判断
+    if (fn && fn.link && fn.ids) { const k = fn.ids.indexOf(f.id); if (k >= 0 && !fn.link[k]) return false; }
     const key = city.uid + ':' + f.id + ':' + city.terrainVer + ':' + city.lockVer + ':' + (city.unlockAll ? 1 : 0);
     if (servCache.has(key)) return servCache.get(key);
     const lm = f.lmK >= 0 ? CM.DATA.landmarks[f.lmK] : null;
@@ -787,7 +809,7 @@
     let ok = false;
     for (let dy = -R; dy <= R && !ok; dy += 0.5) for (let dx = -R; dx <= R && !ok; dx += 0.5) {
       if (dx * dx + dy * dy > R * R) continue;
-      if (CM.Metro.checkSite(city, f.x + dx, f.y + dy, 'underground').ok) ok = true;
+      if (CM.Metro.checkSite(city, f.x + dx, f.y + dy, 'underground').ok && walkable(city, f.x + dx, f.y + dy)) ok = true;
     }
     if (servCache.size > 400) servCache.clear();
     servCache.set(key, ok);
@@ -827,6 +849,10 @@
     if (f.close != null && yr >= f.close) return 'closed';
     if (yr < f.open) return 'wait';
     return g.model.facIndex(f.id) >= 0 ? 'on' : 'idle';
+  };
+  Tasks.facUnavailable = function (f, g) {
+    const m = g.model;
+    return !!(g.city.walk && m.fn && m.trafficReady() && !Tasks.facServable(g.city, f, m.fn));
   };
   // 任务要考核的设施在截止时间之后（或临近截止）才启用：把截止时间放到启用后 FAC_SETTLE 个月。发布时和旧存档的进行中任务都走这里，只往后放
   Tasks.alignFacDeadline = function (t) {
@@ -1018,6 +1044,7 @@
       if (st === 'gone' || st === 'closed') return { ok: false, na: true, value: 0, text: (f ? f.name + ' 已停用' : '设施已不存在') + '，这一项不再考核' };
       if (st === 'wait') return { ok: false, wait: true, value: 0, text: f.name + ' 将于 ' + ymWords(ymOf(f.open)) + '启用，启用后开始统计' };
       if (st === 'idle') return { ok: false, wait: true, value: 0, text: f.name + ' 还没有投入使用，投入后开始统计' };
+      if (Tasks.facUnavailable(f, g)) return { ok: false, na: true, value: 0, text: f.name + ' 附近暂无法接驳，这一项不再考核' };
       const r = Tasks.facShareOf(model, f, t.basis);
       if (!r) return { ok: false, value: 0, text: '客流计算中' };
       const cheap = Tasks.fareCheap(t, g);
@@ -1865,7 +1892,7 @@
     if (model.facDaily && model.fn && model.net && g.compiled.stations.length) {
       let best = null;
       for (const f of model.fn.list) {
-        if (!free('fac:' + f.id, 'facShare') || !Tasks.facServable(g.city, f) || (f.close != null && f.close < g.clock.y + 3) || (!f.ext && G.dist(f.x, f.y) > G.reach)) continue;
+        if (!free('fac:' + f.id, 'facShare') || !Tasks.facServable(g.city, f, model.fn) || (f.close != null && f.close < g.clock.y + 3) || (!f.ext && G.dist(f.x, f.y) > G.reach)) continue;
         const basis = Tasks.facBasis(f), r = Tasks.facShareOf(model, f, basis);
         if (!r || r.vol < 3000 || r.share > 0.12) continue;
         const dNet = f.ext ? 0 : Tasks.netDist(g, f.x, f.y), score = r.vol * (1 - r.share) / (1 + dNet / 16);

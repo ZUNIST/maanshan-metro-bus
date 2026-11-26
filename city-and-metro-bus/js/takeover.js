@@ -382,8 +382,8 @@
     const add = function (path, p, closed) { const q = []; for (let k = 0; k + 1 < p.length; k += 2) q.push([F.X(p[k]), F.Y(p[k + 1])]); const z = simplify(q, 0.15); if (z.length < 2) return false; path.moveTo(z[0][0], z[0][1]); for (let i = 1; i < z.length; i++) path.lineTo(z[i][0], z[i][1]); if (closed) path.closePath(); return true; };
     const polys = function (feats, out) { for (const ft of feats || []) { if (!hits(ft.bbox)) continue; const p = new Path2D(); let any = false; for (const r of ft.rings) any = add(p, r.p, true) || any; if (any) out.push(p); } };
     if (Geo && Geo.water) {
-      polys([].concat(Geo.reserves || [], Geo.woods || [], Geo.parks || []), P.green);
-      polys(Geo.water, P.water); if (city && city.reclaimWater) polys(city.reclaimWater(), P.water);
+      polys([].concat(Geo.view('reserves') || [], Geo.view('woods') || [], Geo.view('parks') || []), P.green);
+      polys(Geo.view('water'), P.water); if (city && city.reclaimWater) polys(city.reclaimWater(), P.water);
       for (const r of Geo.waterLines || []) { if (!hits(r.bbox)) continue; const p = new Path2D(); if (add(p, r.p, false)) P.rivers.push({ p: p, w: Math.max(0.05, r.w) * F.sc }); }
     }
     for (const gr of (city && city.roadGroups) || []) { if (gr.cls < 3 || (gr.year != null && gr.year > yr) || !hits(gr.bbox)) continue; for (const p of gr.ways) add(gr.cls >= 4 ? P.r4 : P.r3, p, false); }

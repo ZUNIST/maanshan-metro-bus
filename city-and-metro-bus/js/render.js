@@ -1235,17 +1235,17 @@
     // 林地（真实范围）
     ctx.fillStyle = GROUND.wood;
     const wp = new Path2D();
-    for (const f of Geo.woods) if (inBox(f.bbox, 0.5)) wp.addPath(this.featurePath(f, true));
+    for (const f of Geo.view('woods')) if (inBox(f.bbox, 0.5)) wp.addPath(this.featurePath(f, true));
     ctx.fill(wp, 'nonzero');
     // 风景区山体：雾蓝绿色
     // 逐个填充：风景区内常有嵌套的子景区，合在一条路径里用奇偶规则会互相抵消成空洞
     ctx.fillStyle = GROUND.hill[0]; ctx.globalAlpha = 0.85;
-    for (const f of Geo.reserves) if (inBox(f.bbox, 0.5)) ctx.fill(this.featurePath(f, true), 'evenodd');
+    for (const f of Geo.view('reserves')) if (inBox(f.bbox, 0.5)) ctx.fill(this.featurePath(f, true), 'evenodd');
     ctx.globalAlpha = 1;
     if (CM.Settings.get('lighting') !== false) this.drawTerrainLight(ctx);
     // 公园（真实范围）
     const pp = new Path2D();
-    for (const f of Geo.parks) if (inBox(f.bbox, 0.5)) pp.addPath(this.featurePath(f, true));
+    for (const f of Geo.view('parks')) if (inBox(f.bbox, 0.5)) pp.addPath(this.featurePath(f, true));
     ctx.fillStyle = GROUND.park; ctx.fill(pp, 'nonzero');
     if (lvl >= 16) { ctx.strokeStyle = GROUND.parkEdge; ctx.lineWidth = px * 1.2; ctx.stroke(pp); }
     // 旧机场跑道
@@ -1284,7 +1284,7 @@
     }
     // 水系（真实岸线）
     const wpth = new Path2D(), bankPath = new Path2D();
-    for (const f of Geo.water) if (inBox(f.bbox, 0.5)) { wpth.addPath(this.featurePath(f, true)); bankPath.addPath(this.bankPath(f)); }
+    for (const f of Geo.view('water')) if (inBox(f.bbox, 0.5)) { wpth.addPath(this.featurePath(f, true)); bankPath.addPath(this.bankPath(f)); }
     ctx.lineJoin = 'round'; ctx.lineCap = 'round';
     // 历史海岸线：尚未填海成陆的区域仍画成水面（单独以 nonzero 填充，避免与海域多边形的奇偶规则抵消）
     // v2.1：填海范围按平滑后的实际水面（city.reclaimWater），岸线只描旧海岸一侧
