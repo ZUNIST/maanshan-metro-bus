@@ -66,8 +66,16 @@
           ? '\n提示：若你是从压缩包里直接双击 index.html，Windows 只会解出这一个文件、js/ 并不在，必然白屏。' +
             '请先解压整个文件夹（双击 启动游戏.bat），或改用 马鞍山地图-单文件版.html。'
           : '';
-        show('8 秒内没有完成启动：可能是浏览器版本过低（不支持现代 JavaScript），或页面脚本被拦截。' + hint + '\n浏览器：' + navigator.userAgent);
-      }, 8000);
+        show('20 秒内没有完成启动：可能是网络较慢（网页版要下载约 2.4 MB 脚本）、浏览器版本过低（不支持现代 JavaScript），' +
+          '或页面脚本被拦截。若稍后已经进入游戏，这条提示会自动消失。' + hint + '\n浏览器：' + navigator.userAgent);
+      }, 20000);
+      // v3.75：慢网或老机器上启动可能晚于阈值，提示弹出后一旦启动成功就撤掉，别让玩家对着红框玩游戏
+      var watchdog = setInterval(function () {
+        if (!booted()) return;
+        clearInterval(watchdog);
+        if (box && box.parentNode) box.parentNode.removeChild(box);
+        box = null;
+      }, 500);
     })();
   </script>
   <canvas id="map" aria-label="城市地图"></canvas>
