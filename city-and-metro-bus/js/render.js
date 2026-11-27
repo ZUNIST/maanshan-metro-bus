@@ -3558,6 +3558,7 @@
     // ---- 地铁 ----
     this.drawDemolitions(ctx, under);
     this.drawScenicZones(ctx, under);
+    this.drawDevelopmentArea(ctx, ui);
     this.drawHeritage(ctx, under);
     this.drawMetro(ctx, ui);
     if (t > 0.05 && this.layer === "none") this.drawStationModels(ctx, g.draft && g.draft.compiled || g.compiled, under);
@@ -5356,6 +5357,37 @@
         ctx.fillStyle = TH.night ? '#d9c2e6' : '#5c2b73'; ctx.fillText(text, p.x, p.y + 0.5);
       });
     }
+    ctx.restore();
+  };
+  // 城市发展选区（v3.82）：ui.R.developmentArea 之前只被赋值、没有任何绘制，玩家看不到自己圈的范围。
+  // 现在画成半透明地块 + 流动虚线边框；只落了第一个角时画十字标记。
+  Renderer.prototype.drawDevelopmentArea = function (ctx, ui) {
+    const a = ui && ui.R && ui.R.developmentArea;
+    if (!a || !a.bounds || !this.game || (a.game && a.game !== this.game)) return;
+    const b = a.bounds, p0 = this.P(b[0], b[1], 0, this._dva0 || (this._dva0 = {})), p1 = this.P(b[2] + 1, b[3] + 1, 0, this._dva1 || (this._dva1 = {}));
+    const l = Math.min(p0.x, p1.x), t = Math.min(p0.y, p1.y), w = Math.abs(p1.x - p0.x), h = Math.abs(p1.y - p0.y);
+    const time = this.time || 0;
+    ctx.save();
+    if (w < 1.5 || h < 1.5) {
+      ctx.strokeStyle = '#ffb24d'; ctx.lineWidth = 2; ctx.globalAlpha = 0.95;
+      ctx.beginPath(); ctx.moveTo(p0.x - 9, p0.y); ctx.lineTo(p0.x + 9, p0.y); ctx.moveTo(p0.x, p0.y - 9); ctx.lineTo(p0.x, p0.y + 9); ctx.stroke();
+      ctx.restore(); return;
+    }
+    const pulse = 0.5 + 0.5 * Math.sin(time * 2.4);
+    ctx.fillStyle = 'rgba(255,178,77,' + (0.13 + 0.07 * pulse).toFixed(3) + ')';
+    ctx.fillRect(l, t, w, h);
+    ctx.setLineDash([7, 5]); ctx.lineDashOffset = -time * 14;
+    ctx.strokeStyle = 'rgba(255,178,77,0.95)'; ctx.lineWidth = 2;
+    ctx.strokeRect(l + 1, t + 1, w - 2, h - 2);
+    ctx.setLineDash([]);
+    const cells = (b[2] - b[0] + 1) * (b[3] - b[1] + 1);
+    ctx.fillStyle = 'rgba(24,28,34,0.78)';
+    const label = cells + ' 格';
+    ctx.font = '600 12px system-ui, -apple-system, "Segoe UI", sans-serif';
+    const tw = ctx.measureText(label).width + 10;
+    ctx.fillRect(l, t - 20, tw, 18);
+    ctx.fillStyle = '#ffcf8a'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+    ctx.fillText(label, l + 5, t - 11);
     ctx.restore();
   };
   Renderer.prototype.drawScenicZones = function (ctx, under) {
