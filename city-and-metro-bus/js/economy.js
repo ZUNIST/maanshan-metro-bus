@@ -396,6 +396,10 @@
 
   // ======================== 建设支出：先用建设专项资金，不足部分用一般资金 ========================
   // 零费用操作（如拆除既有设施）在负余额时也允许，便于止损。
+  // 只看一般资金是否够（v3.85）：站城开发这类物业投资不动用建设专项资金，
+  // 与 canAffordBuild（含 capex）区分开。移植 Starry 的站城开发时漏了这个方法，
+  // 导致「站城开发」页一打开就抛 g.econ.canAfford is not a function。
+  Economy.prototype.canAfford = function (amount) { return this.isFree() || amount <= MONEY_EPS || Math.max(0, this.funds) >= amount; };
   Economy.prototype.canAffordBuild = function (amount) { return this.isFree() || amount <= MONEY_EPS || Math.max(0, this.funds) + Math.max(0, this.capex) >= amount; };
   Economy.prototype.spendBuild = function (byKind, note, when, side) {
     let total = 0; for (const k of BUILD_KINDS) total += byKind[k] || 0;
