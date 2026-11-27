@@ -90,7 +90,7 @@ export async function inspectGame(root = projectRoot) {
   let loaded = false;
   for (const file of scripts) {
     // 数据检查不启动DOM、渲染、工作线程或存储。
-    if (!/^js\/(?:util|config|news|legal|geo(?:_\w+|-index)?|data_\w+|traits|maps)\.js$/.test(file)) continue;
+    if (!/^js\/(?:util|config|news|legal|community-geography|outer-maps|geo(?:_\w+|-index)?|data_\w+|traits|maps)\.js$/.test(file)) continue;
     if (html.includes('<script src="' + file + '" type="application/city-metro-geo">')) continue;
     const asset = requireAsset(root, file);
     vm.runInContext(files.get(asset).bytes.toString(), context, { filename: file, timeout: 10000 });

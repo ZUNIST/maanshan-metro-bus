@@ -82,7 +82,15 @@ assert.deepEqual(Array.from(reopened.lockState().mask), Array.from(singapore.loc
 assert.deepEqual(Array.from(reopened.regionOpen), Array.from(singapore.regionOpen));
 console.log('PASS Singapore opening forecasts, phased construction, unlock-all, Changi and save restoration');
 
-for (const [map, id] of [['gz', 'newair'], ['sh', 'pvgair'], ['ny', 'lga_air'], ['sy', 'sy_air']]) {
+// Starry 社区版：广州、上海扩图后机场进入地图内，接驳口（newair / pvgair）改为图内机场设施，
+// 不再按「接驳口所在片区」判断；这里改为检查机场设施存在且坐标在地图内。
+for (const [map, id] of [['gz', 'gz_newair'], ['sh', 'sh_pvgair']]) {
+  const city = generate(map, 2045);
+  const f = (CM.MAPS[map].data.facilities || []).find(o => o.id === id);
+  assert.ok(f && f.at, id + ' must exist as an airport facility after map expansion');
+  assert.ok(f.at[0] >= 0 && f.at[0] < city.W && f.at[1] >= 0 && f.at[1] < city.H, id + ' must stay inside the expanded map');
+}
+for (const [map, id] of [['ny', 'lga_air'], ['sy', 'sy_air']]) {
   const city = generate(map, 2045);
   const cell = stationCell(city, id);
   assert.ok(cell >= 0, id + ' must accept an underground station after connecting to the city');

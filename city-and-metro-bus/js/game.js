@@ -613,7 +613,10 @@
     // 城市发展
     const acc = model.net ? model.net.acc : null;
     const econF = this.macro && CM.Macro ? CM.Macro.applyFactors(this) : null;
-    const gr = city.growMonth({ year: yr, monthIndex: this.ym(), zoneAccess: model.zoneAccessNorm, cellWalk: acc ? acc.cellWalk : null, coverage: acc ? acc.coverage : 0, econ: econF, pull: this.metroPull() });
+    // 城市发展（Starry 社区版）：本月片区分期开发计划随增长一起结算
+    const development = CM.Development ? CM.Development.monthPlan(this) : null;
+    const gr = city.growMonth({ year: yr, monthIndex: this.ym(), zoneAccess: model.zoneAccessNorm, cellWalk: acc ? acc.cellWalk : null, coverage: acc ? acc.coverage : 0, econ: econF, pull: this.metroPull(), development: development });
+    if (CM.Development) CM.Development.record(this, development);
     yield;
     // 交通刷新节奏（v2.6）：见 trafficDue。不刷新的月份沿用上次的出行结果（模型年份也不变，结果仍算有效），城市发展与经营照常按月结算
     this._graphsDirty = this._graphsDirty || gr.streetsChanged;
@@ -657,6 +660,7 @@
     if (railRCs.length) CM.RailConcessions.monthly(this);   // 国铁运营权：按合同支付月费（各线分别计费）
     if (CM.Corp) CM.Corp.monthly(this);   // 政府合同（v2.5）：评标、履约考核与付费、招标；履约信誉影响本月拨款
     if (CM.Fleet && this.fleet) CM.Fleet.monthly(this);   // 车队（v2.5）：高峰运力不足、列车超龄提示
+    if (CM.Development) CM.Development.settleProperty(this);   // Starry 社区版：站城物业按成交与入驻收租，记入本月账本
     this.econ.payGrant(y, m);
     this.econ.serviceDebt(y, m);   // 债券：到期利息与本金、逾期处理（每月一次，不会重复结算）
     this.recordHistory();
@@ -1149,6 +1153,8 @@
       tutorial: this.tutorial || null,
       voices: this.voices || undefined,   // 地铁圈：关注的市民与他们的动态存档（v2.3）
       folks: this.folks ? { ...this.folks, netVersion: this.netVersion } : undefined,   // 市民人物志（v3.4）：人设、家与去处、通勤历史与动态
+      development: this.development || undefined,   // 城市发展（Starry 社区版）：片区分期开发进度
+      propertyContracts: this.propertyContracts && this.propertyContracts.length ? this.propertyContracts : undefined,   // 站城物业合同
       congRef: this.congRef ? Game.packCong(this.congRef) : undefined,   // 拥堵变化的对比基准（v2.3）
       milestones: this.milestones || null,
       mapInit: this.mapInit || null,
@@ -1217,6 +1223,12 @@
       g.model.fareTram = g.econ.fareTram;
       g.model.fareBus = g.econ.fareBus;
       g.tasks = CM.Tasks.restore(s.tasks);
+      // Starry 社区版：城市发展与站城物业（片区开发进度、物业合同）
+      if (CM.Development) {
+        g.development = CM.Development.restore(s.development, g.city);
+        g.propertyContracts = CM.Development.restoreContracts(s.propertyContracts, g.city);
+        if (g.development && g.development.propertyId && !g.propertyContracts.some(function (q) { return q.id === g.development.propertyId; })) delete g.development.propertyId;
+      }
       g.buildSeq = Number.isSafeInteger(s.buildSeq) && s.buildSeq > 0 ? s.buildSeq : 0;
       g.corp = s.corp && Array.isArray(s.corp.contracts) ? (CM.Corp ? CM.Corp.restore(s.corp, g.ym()) : s.corp) : null;
       g.fleet = s.fleet && Array.isArray(s.fleet.trains) ? s.fleet : null;

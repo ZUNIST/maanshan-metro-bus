@@ -973,6 +973,28 @@
         el.appendChild(this.sec('ln-seg', '选中区段：' + net.stations[seg.a].name + '—' + net.stations[seg.b].name, '', function () {
           const b = h('div');
           b.appendChild(self.kv([['长度', U.fmtKm(geo.lenM)], ['建设方式', CFG.metro.typeName[seg.type]], geo.waterM > 1 ? ['跨江', (seg.type === 'underground' ? '越江隧道 ' : '跨江桥梁 ') + U.fmtKm(geo.waterM)] : null, geo.hillM > 1 ? ['山体隧道', U.fmtKm(geo.hillM)] : null, ['最小曲线半径', isFinite(geo.minRadiusM) ? Math.round(geo.minRadiusM) + ' m' : '直线']]));
+          // Starry 社区版：列车噪声与隔音屏（只对地面、高架段收费与统计）
+          const barrierCost = CM.Noise.cost(seg, geo, g.clock.y);
+          if (barrierCost > 0) {
+            const shared = [seg, ...M.coTrackSegs(net, seg).map(x => net.segments[x.id])];
+            const planned = shared.some(s => s.noiseBarrier);
+            const built = shared.some(s => g.net.segments[s.id]?.noiseBarrier);
+            const live = CM.Noise.current(g.model).segments.find(s => s.key === M.trackKey(seg));
+            const preview = CM.Noise.previewSegment(g.city, seg, geo, live ? live.factor : 0.8, planned);
+            b.appendChild(h('div', { class: 'field' }, h('label', null, '列车噪声与隔音屏'),
+              h('div', { class: 'tiny muted' }, (live ? '按现有班次估算，' : '按参考班次估算，') + '约 ' +
+                U.fmtPeople(preview.people) + ' 人受明显影响' +
+                (planned ? '。' : '，加装后约 ' + U.fmtPeople(preview.protectedPeople) + ' 人。') +
+                (live && live.nightShare >= 0.35 ? ' 夜间班次对暴露影响较大。' : '')),
+              h('button', { class: 'btn sm', disabled: built, onclick: function () {
+                g.edit(function (n) {
+                  const s = n.segments[segId];
+                  for (const t of [s, ...M.coTrackSegs(n, s).map(x => n.segments[x.id])]) {
+                    if (planned) delete t.noiseBarrier; else t.noiseBarrier = true;
+                  }
+                });
+              } }, built ? '隔音屏已建成' : planned ? '撤销隔音屏草案' : '加装隔音屏 · ' + U.fmtMoney(barrierCost))));
+          }
           const tc = h('div', { class: 'seg-ctl', style: { marginTop: '8px' } });
           for (const t of ['underground', 'surface', 'elevated']) {
             const cost = M.trackCost(geo, t, g.clock.y);
@@ -1338,6 +1360,22 @@
       h('button', { class: 'btn sm ghost', onclick: function () { self.locatePoint(f.x, f.y, f.name, Math.max(0.8, f.r), 3); } }, '定位'),
       active ? h('button', { class: 'btn sm ghost', onclick: function () { self.openPage('zone', model.fn.hostZ[model.Z + k]); } }, '所在片区') : null));
     return { title: f.name, el: el };
+  };
+
+  // ======================== 页面：城市发展（Starry 社区版） ========================
+  // 发展项目（片区圈选开发）、站城开发（地铁公司投资物业）与人口统计三个分页
+  UI.prototype.page_development = function (id) {
+    const g = this.g(), tab = id === 'population' || id === 'property' ? id : 'project';
+    const el = h('div');
+    el.appendChild(this.pageTabs([['project', '发展项目', 'building'], ['property', '站城开发', 'briefcase'], ['population', '人口统计', 'people']], tab, next => {
+      this.openPage('development', next, { replaceTop: true });
+      this.rBody.scrollTop = 0;
+    }));
+    if (tab === 'population') el.appendChild(this.page_metric('pop').el);
+    else if (CM.Development && CM.Development.enabled(g)) {
+      el.appendChild(tab === 'property' ? CM.Development.propertyPanel(this, g, () => this.rerenderPage()) : CM.Development.panel(this, g));
+    } else el.appendChild(h('div', { class: 'note' }, '发展项目在正式游玩中开放。'));
+    return { title: '城市发展', el };
   };
 
   // ======================== 页面：指标 ========================

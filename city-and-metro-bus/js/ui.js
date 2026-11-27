@@ -131,6 +131,7 @@
       h('div', { class: 'cluster glass actions' },
         hb('search', 'search', '搜索车站、线路、道路、区域', function () { self.openSearch(); }, 'ui.search'),
         taskBtn,
+        hb('development', 'building', '城市发展', function () { self.openTop('development'); }, 'ui.development'),
         hb('stats', 'chart', '城市统计', function () { self.openStats(); }, 'ui.stats'),
         hb('theme', 'moon', '深色模式', function () { self.toggleTheme(); }, 'ui.theme'),
         hb('settings', 'gear', '设置', function () { self.showSettings(); }),
@@ -794,6 +795,7 @@
     }
     this.mFold.classList.toggle('has-on', !!this.mMore.querySelector('.pill.on'));
     this.hbtns.tasks.classList.toggle('on', !!top && top.kind === 'tasks');
+    if (this.hbtns.development) this.hbtns.development.classList.toggle('on', !!top && top.kind === 'development');
   };
   // 存档状态：注明已保存的是哪个游戏时刻，避免把旧快照当作当前进度
   UI.prototype.saveStatusText = function () {
@@ -2027,6 +2029,10 @@
       this.openPage('tasks', tab, { root: true });
     }
     else if (key === 'save') this.openPage('saves', null, { toggle: true, root: true });
+    else if (key === 'development') {
+      if (open && top.kind === 'development') { this.closePanel(); return; }
+      this.openPage('development', 'project', { root: true });
+    }
     else this.openPage('metric', key, { toggle: true, root: true });
   };
   UI.prototype.openPage = function (kind, id, opts) {

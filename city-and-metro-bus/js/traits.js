@@ -170,6 +170,11 @@
       needs: function (t, D) { return hasData(D.reclaim && D.reclaim.length, '没有填海数据'); } },
     newDistrict: { mod: 'dev', name: '新区开发', effect: function () { return '新区按真实年份开放，开发期内增长加快'; },
       needs: function (t, D) { return hasData((D.events || []).some(function (e) { return e.fx && e.fx.grow; }), '没有片区增长事件'); } },
+    // Starry 社区版：跨区通勤走廊、新镇分期入住（底层数据已在各城 eras / regions 里，机制只做说明与数据校验）
+    commuteCorridor: { mod: 'dev', name: '跨区通勤', effect: t => t.effect,
+      needs: (t, D) => hasData((D.eras || []).some(e => e.corridors && e.corridors.length), '没有通勤走廊数据') },
+    phasedGrowth: { mod: 'dev', name: '分期增长', effect: t => t.effect,
+      needs: (t, D) => needRegions(t.regions, D) },
     relocate: { mod: 'dev', name: '疏解与副中心', effect: function () { return '老城人口与岗位向外迁移，新中心增长加快'; },
       needs: function (t, D) { return hasData((D.eras || []).some(function (e) { return e.relocate; }), '没有疏解数据'); } },
     transition: { mod: 'dev', name: '产业转型',

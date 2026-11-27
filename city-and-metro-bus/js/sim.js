@@ -2758,6 +2758,11 @@
       const B = base ? { wd: self.aggregate(base.wd, baseNet), we: self.aggregate(base.we, baseNet) } : { wd: empty(), we: empty() };
       const Dr = { wd: self.aggregate(draft.wd, draftNet), we: self.aggregate(draft.we, draftNet) };
       result.base = self.weekAvg(B.wd, B.we, baseNet); result.draft = self.weekAvg(Dr.wd, Dr.we, draftNet);
+      // Starry 社区版：建设前后的沿线噪声暴露人数（隔音屏、改地下都会反映在这里）
+      if (CM.Noise) result.noise = {
+        before: base ? CM.Noise.assess(self, baseNet.C, base.wd, base.we).people : 0,
+        after: CM.Noise.assess(self, draftNet.C, draft.wd, draft.we).people,
+      };
       result.wk = { base: B.wd, draft: Dr.wd }; result.we = { base: B.we, draft: Dr.we };
       // 出行目的：地铁出行（人次/日），工作日与周末
       result.purpose = PK.map(function (k, q) { return { key: k, wd0: B.wd[MKEY[q]] || 0, wd1: Dr.wd[MKEY[q]] || 0, we0: B.we[MKEY[q]] || 0, we1: Dr.we[MKEY[q]] || 0, tot: Dr.wd[TKEY[q]] || 0 }; });

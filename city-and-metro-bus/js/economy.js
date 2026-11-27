@@ -263,6 +263,13 @@
     const burden = daily.metro > 1 ? daily.avgFare / (vot * 0.35) : 0;
     f.push({ label: '票价负担（平均 ' + U.cur(daily.avgFare).toFixed(U.cur(daily.avgFare) < 10 ? 2 : 1) + ' ' + CFG.money.unit + '）', v: -9 * U.clamp((burden - 1) / 2, 0, 1) });
     f.push({ label: '车厢拥挤（周平均超载客公里 ' + U.fmtPct(daily.crowdShare, 0) + '）', v: -9 * U.clamp(daily.crowdShare / 0.25, 0, 1) });
+    // Starry 社区版：地面、高架线路的列车噪声计入满意度（隔音屏可减免）
+    const noise = CM.Noise && model && model.net ? CM.Noise.current(model) : null;
+    if (noise && noise.people > 0) {
+      const pop = model.city.pop.reduce(function (sum, n) { return sum + n; }, 0);
+      f.push({ label: '沿线列车噪声（约 ' + U.fmtPeople(noise.people) + ' 人受明显影响）',
+        v: -Math.min(3, 55 * noise.severity / Math.max(1, pop)) });
+    }
     const ym = U.ymIndex(y, m);
     for (const md of this.mods) if (md.kind === 'sat' && md.until >= ym) f.push({ label: md.reason, v: md.delta });
     // 历史事件的满意度效果（v2.2，如大型国际活动），按时间计算

@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 
 export async function geoIndex(root, write = false) {
   const html = await readFile(path.join(root, 'index.html'), 'utf8');
-  const entries = [...html.matchAll(/<script src="(js\/geo_([a-z]+)\.js)" type="application\/city-metro-geo">/g)];
+  const entries = [...html.matchAll(/<script src="(js\/geo_([a-z0-9]+)\.js)" type="application\/city-metro-geo">/g)];
   if (!entries.length) throw new Error('入口缺少按需加载的地图');
   const index = {};
   for (const [, file, id] of entries) {
@@ -15,7 +15,7 @@ export async function geoIndex(root, write = false) {
     const G = CM.GEOS?.[id];
     if (!G?.proj || !G.water || !G.roads) throw new Error('地图数据不完整：' + file);
     const integrity = 'sha256-' + createHash('sha256').update(bytes).digest('base64');
-    index[id] = { file, integrity, proj: G.proj, names: G.names || [], places: G.places || [], count: { water: G.water.length, roads: G.roads.length } };
+    index[id] = { file, integrity, proj: G.proj, w: G.w, h: G.h, names: G.names || [], places: G.places || [], runways: G.runways || [], scenarioPlaces: G.scenarioPlaces || [], heritage: G.heritage || [], count: { water: G.water.length, roads: G.roads.length } };
   }
   const output = "'use strict';\n// 由 scripts/geo-index.mjs 根据各城市地理数据生成。\n" +
     '(function (CM) {\n  const geos = CM.GEOS = CM.GEOS || {};\n  const index = {\n' +

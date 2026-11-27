@@ -987,6 +987,7 @@
         const child = net.segments[id];
         child.tk = from.tk; child.tkE = (from.tkE || []).slice();
         if (from.built) child.built = from.built.slice();
+        if (from.noiseBarrier) child.noiseBarrier = true;   // Starry 社区版：拆分后各段都保留已装隔音屏
         child.tkSplit = { source: source, alignment: railAlignment(net, child) };
       }
     };
@@ -1056,6 +1057,7 @@
           }
           net.segments[id] = { id: id, line: lid, a: o1, b: o2, pts: p1.concat([[st.x, st.y]], p2), type: type, base: Array.from(new Set(base)) };
           if (s1.curve && s1.curve === s2.curve) net.segments[id].curve = s1.curve;
+          if (s1.noiseBarrier && s2.noiseBarrier) net.segments[id].noiseBarrier = true;   // 两段都装了隔音屏才合并保留
         }
       } else {
         for (const s of segs) delete net.segments[s.id];
@@ -1935,6 +1937,8 @@
     // 改了运行速度的线路（v2.5）：全线按新速度的最小半径复核
     const respeed = new Set();
     for (const lid in draft.lines) if (off.lines[lid] && M.lineKmh(off.lines[lid]) !== M.lineKmh(draft.lines[lid])) respeed.add(lid);
+    // Starry 社区版：隔音屏按轨道计费，已装隔音屏的轨道不重复收费
+    const paidBarriers = new Set(Object.values(off.segments).filter(x => x && x.noiseBarrier).map(M.trackKey));
     for (const id in draft.segments) {
       const s = draft.segments[id];
       const g = M.segGeom(draft, s, city);
@@ -1976,6 +1980,19 @@
               res.demolitions.push.apply(res.demolitions, dm.cells);
             }
             res.affectedLines.add(s.line); touched.add(id); gr.changed = true; gr.retyped = true;
+          }
+        }
+      }
+      // Starry 社区版：新加隔音屏按轨道一次性计费（同一轨道多段只收一次）
+      if (s.noiseBarrier && !(base?.length && base.every(x => off.segments[x].noiseBarrier))) {
+        const key = M.trackKey(s);
+        if (!paidBarriers.has(key)) {
+          const fee = CM.Noise.cost(s, g, year);
+          if (fee > 0) {
+            item('upgrade', '增设隔音屏 · ' + lbl, fee, id);
+            paidBarriers.add(key);
+            res.affectedLines.add(s.line);
+            res.changes.mod.push('增设隔音屏 · ' + lbl);
           }
         }
       }

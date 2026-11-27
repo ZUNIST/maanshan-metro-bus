@@ -70,6 +70,8 @@
     m.cfg = cfg;
     MAPS[m.id] = m;
   }
+  // Starry 社区版：上海、广州外围扩图。GEO_OUTER 是完整底图（含外围），替换桩后 geoReady 直接为真，不再走按需加载。
+  for (const id of ['gz', 'sh']) if (CM.expandOriginalMap && MAPS[id]) CM.expandOriginalMap(MAPS[id]);
   // 默认命名、地名搜索和坐标对齐使用同一份清理后的地点。
   const normalizePlaceNames = function (m) {
     const corrections = m.data.stationNameCorrections || {};
@@ -140,9 +142,11 @@
   //  · 车站、轨道控制点、任务锚点平移；片区编号（动态任务与冷却记录）按新格网换算；
   //  · 城市经济在载入后按新增范围的岗位比例调整统计口径（见 game.js），资金、债务、任务、历史记录保持不变。
   // spec 也可以是按版本排列的数组（v2.2：香港第 2 版再向西扩大为第 3 版），旧存档依次迁移；每步的新格网尺寸为 newW / newH，缺省为当前地图尺寸
-  CM.extentMigration = function (specs) {
-    const ZN = CFG.ZONE, list = (Array.isArray(specs) ? specs : [specs]).slice().sort(function (a, b) { return a.from - b.from; });
-    for (const spec of list) if (spec.dx % ZN || spec.dy % ZN) throw new Error('地图扩展偏移须为交通小区边长的倍数');
+  CM.extentMigration = function (specs, zone) {
+    // 小区边长按各地图自己的 cfg.ZONE 校验：扩图（上海、广州）后 ZONE 会从 4 变为 8，全局 CFG 也跟着切到默认地图，
+    // 但各图 extent 的 dx/dy 是按本图的格网设计的，不能拿全局值统一校验。
+    const ZN = zone || CFG.ZONE, list = (Array.isArray(specs) ? specs : [specs]).slice().sort(function (a, b) { return a.from - b.from; });
+    for (const spec of list) if (spec.dx % ZN || spec.dy % ZN) throw new Error('地图扩展偏移须为交通小区边长的倍数：dx=' + spec.dx + ' dy=' + spec.dy + ' ZONE=' + ZN + ' note=' + (spec.note || ''));
     return function (p, from) {
       const steps = list.filter(function (s) { return s.from >= from; });
       if (!steps.length || steps[0].from !== from) throw new Error('不支持从第 ' + from + ' 版迁移');
@@ -235,7 +239,7 @@
     }
   }
   // 声明了范围扩展（extent）的地图：旧版本存档按扩展规格迁移
-  for (const id in MAPS) if (MAPS[id].extent && !MAPS[id].migrate) MAPS[id].migrate = CM.extentMigration(MAPS[id].extent);
+  for (const id in MAPS) if (MAPS[id].extent && !MAPS[id].migrate) MAPS[id].migrate = CM.extentMigration(MAPS[id].extent, MAPS[id].cfg.ZONE);
   // 杭州、武汉：第 2→3 版只调整了展示（格网、区域编号与玩家线网不变），第 2 版存档按第 3 版继续迁移；
   // v2.2 起第 3→4 版向外扩大（萧山机场、天河机场，见各自的 extent）
   for (const id of ['hz','wh']) {

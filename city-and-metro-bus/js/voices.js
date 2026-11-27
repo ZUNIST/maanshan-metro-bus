@@ -79,6 +79,17 @@
     for (let z = 0; z < m.Z; z++) if (m.zPop[z] > 6000 && (acc.zCov[z] || 0) < 0.15) gaps.push(z);
     gaps.sort(function (a, b) { return m.zPop[b] - m.zPop[a]; });
     for (const z of gaps.slice(0, 3)) { const p = g.zoneName(z).replace(/（.*?）/, '').replace(/一带$/, ''); post('bad', 'cover', fill(say(SAY.cover, z + ym), { p: p }), m.zPop[z], { zone: z }, ['覆盖'], p, null, ['cover'], { p: p, pop: m.zPop[z], near: nearSt(z) }); }
+    // Starry 社区版：沿线列车噪声抱怨（只挑受明显影响人数最多的两条地面/高架轨道）
+    if (CM.Noise && m.net) {
+      const noisy = CM.Noise.current(m).segments.filter(function (s) { return s.people >= 500; }).sort(function (a, b) { return b.people - a.people; });
+      for (const s of noisy.slice(0, 2)) {
+        const seg = g.net.segments[s.id], line = g.net.lines[s.line];
+        if (!seg || !line) continue;
+        const place = g.net.stations[seg.a].name + '—' + g.net.stations[seg.b].name;
+        post('bad', 'noise', line.name + '「' + place + '」靠近住宅，预计约 ' + U.fmtPeople(s.people) + ' 名居民受列车噪声影响。' + (s.nightShare >= 0.35 ? '夜间班次影响更大。' : ''),
+          s.people, { point: [s.x, s.y] }, ['噪声'], place);
+      }
+    }
     // 新开车站（近 6 个月）
     const fresh = [];
     C.stations.forEach(function (s, i) { const st = g.net.stations[s.id]; if (st && st.built && ym - U.ymIndex(st.built[0], st.built[1]) <= 6 && C.serviced[i]) fresh.push(i); });
