@@ -3,8 +3,8 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
-const CACHE = 'C:/Users/zuni/WorkBuddy/2026-11-15-15-18-24/osm-cache';
-const OUT = 'C:/Users/zuni/WorkBuddy/2026-11-15-15-18-24/city-and-metro/js/geo_ms.js';
+const CACHE = process.env.CM_CACHE || 'C:/Users/zuni/WorkBuddy/2026-11-15-15-18-24/osm-cache';
+const OUT = process.env.CM_OUT || 'C:/Users/zuni/WorkBuddy/2026-11-15-15-18-24/city-and-metro/js/geo_ms.js';
 const ID = 'ms';
 
 // 地图范围与格网：416 × 328 格（104 km × 82 km），交通小区 8 格
