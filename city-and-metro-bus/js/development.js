@@ -99,10 +99,27 @@
 
   function service(g, cells, type, phase) {
     const model = g.model, net = model?.net;
-    const result = { cells: [], covered: 0, linked: 0, room: 0, status: '等待交通数据' };
+    const result = { cells: [], covered: 0, linked: null, room: null, openStations: 0, darkStations: 0, status: '等待交通数据' };
     if (!cells.length) return { ...result, status: '地块暂无可用土地' };
     if (!net?.acc || !model.trafficReady()) return result;
     const city = g.city, acc = net.acc;
+
+    // 选区内的车站开通情况（v3.83）：未开通的车站不提供服务（见 sim.computeAccess），
+    // 但玩家看到线路与车站已建成时，很容易以为应该算覆盖。这里单独统计，面板直接写出来。
+    if (net.C && net.C.stations) {
+      let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+      for (const c of cells) { const x = c % city.W, y = (c - x) / city.W;
+        if (x < bx0) bx0 = x; if (x > bx1) bx1 = x; if (y < by0) by0 = y; if (y > by1) by1 = y; }
+      for (let k = 0; k < net.C.stations.length; k++) {
+        const st = net.C.stations[k];
+        const cell = city.cellAt(st.x, st.y);
+        if (cell < 0) continue;
+        const x = cell % city.W, y = (cell - x) / city.W;
+        if (x < bx0 || x > bx1 || y < by0 || y > by1) continue;
+        if (net.C.serviced && !net.C.serviced[k]) result.darkStations++;
+        else result.openStations++;
+      }
+    }
     const outside = new Map(), stationCells = new Map();
     for (const c of cells) {
       const z = city.zoneOf(c);
@@ -116,7 +133,10 @@
       stationCells.get(s).push(c);
       result.covered++;
     }
-    if (result.covered * 2 < cells.length) return { ...result, status: '至少一半地块需在车站步行 800 米内' };
+    if (result.covered * 2 < cells.length) {
+      const need = Math.ceil(cells.length / 2) - result.covered;
+      return { ...result, need: need, status: '至少一半地块需在车站步行 800 米内（还差 ' + need + ' 格）' };
+    }
 
     const { graph, reverse } = network(model);
     const connects = (adj, s, limit, kind, totals) => {
@@ -131,6 +151,7 @@
         }
       return connected;
     };
+    result.linked = 0; result.room = 0;
     const served = (s, limit) => {
       const jobs = type === 'jobs' ? Infinity : connects(graph, s, limit, 'jobs', model.zJobs);
       const workers = type === 'housing' ? Infinity : connects(reverse, s, limit, 'pop', model.zPop);
@@ -278,8 +299,11 @@
         line('第 ' + (p.phase + 1) + ' / 3 期 · ' + names[p.type], 'strong');
         line('居民 ' + amount(p.pop) + ' / ' + amount(t.pop) + ' · 岗位 ' + amount(p.jobs) + ' / ' + amount(t.jobs));
         line(p.held ? '已暂停投资。' : report.status);
-        line('步行覆盖 ' + report.covered + ' / ' + cells.length + ' 格 · 有效连接 ' + report.linked + ' 格' +
-          (p.phase ? ' · 高峰有余量 ' + report.room + ' 格' : ''));
+        line('步行覆盖 ' + report.covered + ' / ' + cells.length + ' 格' +
+          (report.linked == null ? ' · 有效连接待评估（先满足步行覆盖）'
+            : ' · 有效连接 ' + report.linked + ' 格' + (p.phase ? ' · 高峰有余量 ' + report.room + ' 格' : '')));
+        // 只统计已开通运营的车站：把未开通的车站数量说出来，避免看成「建了站却不给覆盖」
+        if (report.darkStations) line('选区内 ' + (report.openStations + report.darkStations) + ' 座车站中 ' + report.darkStations + ' 座尚未开通运营，不计入步行覆盖。');
         const months = p.opened == null ? 0 : Math.max(0, g.ym() - p.opened + 1);
         const left = openPop + openJobs;
         if (p.carryPop || p.carryJobs) line('往期尚有 ' + amount(p.carryPop || 0) + ' 名居民与 ' + amount(p.carryJobs || 0) + ' 个岗位的容量。');
@@ -369,8 +393,12 @@
     const t = targets(cells.length, 0, draft.type, renewal);
     line('第一期计划新增居民 ' + amount(t.pop) + '、岗位 ' + amount(t.jobs) + '。');
     line('可先签承诺，通车达标后开始投资。后续两期可继续沿用原有线网，并调整发展方向。');
-    line('一期要求半数用地距车站步行 800 米以内，并在约 45 分钟内连到已有城区。居住区需连到至少 8,000 个岗位，就业区需连到至少 8,000 名居民，混合区需同时满足。后两期还要求可达线路高峰载客率不超过 85%。');
-    line(service(g, cells, draft.type, 0).status);
+    line('一期要求半数用地距车站步行 800 米以内（沿实际道路计，只算已开通运营的车站），并在约 45 分钟内连到已有城区。居住区需连到至少 8,000 个岗位，就业区需连到至少 8,000 名居民，混合区需同时满足。后两期还要求可达线路高峰载客率不超过 85%。');
+    const first = service(g, cells, draft.type, 0);
+    line('步行覆盖 ' + first.covered + ' / ' + cells.length + ' 格' +
+      (first.linked == null ? ' · 有效连接待评估（先满足步行覆盖）' : ' · 有效连接 ' + first.linked + ' 格'));
+    if (first.darkStations) line('选区内 ' + (first.openStations + first.darkStations) + ' 座车站中 ' + first.darkStations + ' 座尚未开通运营，不计入步行覆盖。');
+    line(first.status);
     row(button('签署发展承诺', () => {
       g.development = { bounds: draft.bounds.slice(), size: cells.length, phase: 0, type: draft.type, renewal,
         next: draft.type, pop: 0, jobs: 0, totalPop: 0, totalJobs: 0, held: false, stopped: false };

@@ -20,6 +20,6 @@ try{
  const b=(await ev("(function(){var x=[...document.querySelectorAll('button')].find(e=>/选视野中心/.test(e.textContent));if(x){x.click();return 'clicked'}return 'nobtn'})()")).value;
  console.log('BTN:',b); await sleep(1200);
  console.log('DRAFT:',JSON.stringify((await ev("(function(){var d=CM.ui.developmentDraft;return d?{bounds:d.bounds}:null})()")).value));
- console.log('PANEL:',String((await ev("(function(){var r=document.querySelector('.rbody')||document.querySelector('#rightPanel');return r?r.textContent.replace(/\\s+/g,' ').slice(0,150):'none'})()")).value));
+ console.log('PANEL:',String((await ev("(function(){var r=document.querySelector('.rbody')||document.querySelector('#rightPanel');return r?r.textContent.replace(/\\s+/g,' ').slice(0,420):'none'})()")).value));
  console.log('LOGS:',JSON.stringify(logs.slice(-3)));
 }catch(e){console.log('FAIL',e.message)}finally{try{child.kill()}catch{}}
