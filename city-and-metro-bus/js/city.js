@@ -1978,6 +1978,56 @@
         if (restore < 1) { this.dirty.add(c); hillChanged = true; }
       }
     };
+    // 城市发展项目落地（v3.86）：把划定的地块真正填进城市。
+    // 之前只移植了 development.js 的账本，growMonth 根本没读 ctx.development，
+    // 于是投资之后图上什么都不变——建成区不扩、人口不迁入。
+    // 这里按「开发区先把地整平、七通一平，再按工期逐月进人进厂」来做：
+    // 改用地性质、铺上街区、按本月预算注入居民或岗位。
+    const project = ctx.development;
+    let projUrban = 0;
+    if (project && project.cells && project.cells.length) {
+      const cells = project.cells, nCell = cells.length;
+      const planned = project.type === 'housing' ? LU.RES : project.type === 'jobs' ? LU.IND : LU.MIX;
+      const reserve = (arr, cap, budget, residential) => {
+        let remaining = Math.max(0, budget || 0), added = 0;
+        for (let i = 0; i < nCell && remaining > 0.001; i++) {
+          const c = cells[i];
+          const rural = this.lu[c] === LU.RURAL;
+          const fraction = Math.max(0.05, this.landFrac[c] * (1 - this.taken[c]));
+          // 片区更新把既有住宅/商业改成混合用地；新区按项目类型落用地
+          const updated = project.renewal ? LU.MIX : planned;
+          const updateCap = residential ? resCap(updated) : jobCap(updated, this.regions[this.region[c]].plan);
+          // 生地（农田）与更新地块先按规划用地算出真实容量，再填人
+          const capacity = (rural || updated !== this.lu[c]) ? Math.max(cap[c], updateCap * eraMul * fraction) : cap[c];
+          // 预算在可用地块之间均摊，进度自然、不会把预算全砸在头几块地上
+          const inc = Math.min(capacity - arr[c], remaining / (nCell - i), 240);
+          if (inc <= 0.001) continue;
+          arr[c] += inc;
+          added += inc;
+          remaining -= inc;
+          this.dirty.add(c);
+          changed.push(c);
+          // 进驻到一定规模才落用地性质、铺街区：前期是工地（仍然是生地），
+          // 半期之后连片成形，建成区随投资一片片长出来。
+          // 门槛按格错开（32–80），否则所有地块同一月达标，会看到「整片一夜变城区」。
+          const gate = 32 + 48 * U.hash2(c, 7, this.seed);
+          if (arr[c] >= gate && (rural || updated !== this.lu[c] || !this.street[c])) {
+            if (rural || updated !== this.lu[c]) this.lu[c] = this.plan[c] = updated;
+            if (!this.street[c]) { this.street[c] = 1; this.urbanYear[c] = Math.floor(year); projUrban++; }
+          }
+        }
+        return added;
+      };
+      // 居民：新迁入人口直接进地块；就业项目（工业区）不带常住人口，只落岗位
+      project.addedPop = reserve(this.pop, capR, project.popRate, true);
+      if (project.jobsRate > 0.001) {
+        project.addedJobs = reserve(this.jobs, capJ, project.jobsRate, false);
+        project.regularJobs = project.addedJobs;
+        project.netJobs = project.addedJobs;
+      }
+    }
+    // 不把项目新增从自然增长里扣掉：市政投资是「额外创造」的增长（新区吸引外来人口与投资），
+    // 扣掉会让全城总量原地踏步，投资效果被抵消——这正是之前「投了钱却看不出变化」的另一半原因。
     distribute(this.pop, capR, wR, sR, dP, hills.homes);
     distribute(this.jobs, capJ, wJ, sJ, dJ, hills.jobs);
     for (let c = 0; c < N; c++) {
@@ -1986,7 +2036,7 @@
         this.bh[c] = this.heightFor(c, year); this.dirty.add(c); hillChanged = true;
       }
     }
-    let newUrban = 0, streetsChanged = false;
+    let newUrban = projUrban, streetsChanged = projUrban > 0;
     const seen = new Set();
     // 工地（只用于画面上的塔吊，不参与模拟、不存档）：新城市化或明显加高的街区，记录开工月份
     const sites = this.sites || (this.sites = new Map());

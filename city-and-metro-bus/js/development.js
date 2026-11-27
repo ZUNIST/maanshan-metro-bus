@@ -276,6 +276,11 @@
     g.emit('toast', { kind: 'good', text: title });
   }
 
+  // 每期把容量填满所需月数（v3.86）：居住/混合按 3 年一期（三期约 9 年），
+  // 就业按 1 年半一期（三期约 4 年半）。参考县级经开区：和县经开区 2005 年启动，
+  // 十年建成 6.48 km²；工业园区的厂房投用比住宅区快得多。
+  const FILL = { housing: 36, mixed: 36, jobs: 18 };
+
   function monthPlan(g) {
     const p = g.development;
     if (!p || p.stopped || p.held || p.phase === stages.length) return null;
@@ -284,8 +289,12 @@
     const type = pop > 0.001 || jobs > 0.001 ? demandType(pop, jobs) : p.type;
     const report = service(g, land, type, p.phase);
     if (!report.cells.length) return null;
+    // 按剩余工期摊成本月预算：工期固定，进度可见，也不会因为城市总量曲线而忽快忽慢
+    const fill = FILL[p.type] || 36;
+    const left = Math.max(1, fill - Math.max(0, g.ym() - (p.opened ?? g.ym())));
     return { cells: report.cells, bounds: p.bounds, pop, jobs, workers: report.workers,
-      type, renewal: p.renewal, share: p.phase === 0 ? 0.22 : 0.15 };
+      type, renewal: p.renewal, share: p.phase === 0 ? 0.22 : 0.15,
+      popRate: pop / left, jobsRate: jobs / left, fill: fill, leftMonths: left };
   }
 
   function record(g, plan) {
@@ -362,12 +371,17 @@
         if (p.carryPop || p.carryJobs) line('往期尚有 ' + amount(p.carryPop || 0) + ' 名居民与 ' + amount(p.carryJobs || 0) + ' 个岗位的容量。');
         if (!p.held && report.cells.length && months >= 6 && left > 1) line(p.rate > 1 ? '按近期速度，填满已开放容量约需 ' + Math.ceil(left / p.rate) + ' 个月。' : '近期入驻很少，已开放容量可能长期空置。');
         if (p.phase > 0 && report.linked * 2 >= cells.length && report.room < report.linked) line('可增加班次、换用更大编组，或增加分流线路。');
+        // 工期口径（v3.86）：参考县级经开区的实际开发节奏
+        const fill = FILL[p.type] || 36;
+        line(p.type === 'jobs'
+          ? '按 ' + fill + ' 个月建成一期的节奏推进：厂房与园区连片成形约需 3–5 年，常住人口基本不随迁（岗位靠通勤）。'
+          : '按 ' + fill + ' 个月建成一期的节奏推进：居民入住与配套成熟约需 5–10 年。');
         if (p.phase < stages.length - 1) {
           line('下一期发展方向');
           row(...options(p.next, type => { p.next = type; save(); }));
           line('政府启动下一期要求观察满 12 个月、当期各项入驻达 60%，且下一期所需的地铁服务有运力余量。当前观察 ' + Math.min(months, observation) + ' / 12 个月。');
           if (p.opened != null && !p.held) {
-            const cost = Math.ceil(p.size * stages[p.phase + 1] * (p.renewal ? 1100 : 800));
+            const cost = Math.ceil(p.size * stages[p.phase + 1] * (p.renewal ? 500 : 400));
             const free = g.econ.isFree();
             row(button('提前建设下一期' + (free ? '' : ' · ' + CM.U.fmtMoney(cost)), () => {
               if (g.jumping || !free && g.econ.funds < cost) { ui.toast('可用建设资金不足或正在推进时间。', 'info'); return; }
