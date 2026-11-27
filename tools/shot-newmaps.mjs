@@ -37,7 +37,8 @@ try {
     if (m.method === 'Runtime.consoleAPICalled' && m.params.type === 'error') logs.push('console.error: ' + m.params.args.map(a => a.value || a.description || '').join(' '));
   };
   await send('Page.enable'); await send('Runtime.enable');
-  await send('Page.navigate', { url: 'http://127.0.0.1:8211/index.html' });
+  const PAGE_URL = process.env.CM_URL || 'http://127.0.0.1:8211/index.html';
+  await send('Page.navigate', { url: PAGE_URL });
 
   // 等启动完成
   let ready = false;
