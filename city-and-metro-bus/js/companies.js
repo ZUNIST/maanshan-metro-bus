@@ -12,7 +12,7 @@
   const PALETTE = ['#2b7ea8', '#d4537e', '#ba7517', '#1d9e75', '#7f77dd', '#d85a30', '#639922', '#993556', '#0f6e56', '#854f0b'];
   // 跨公司换乘惩罚档位（广义分钟）：关闭 / 温和 / 明显。加在换乘边的 eT0 上，影响路径选择与分担率。
   R.PENALTY = [[0, 0], [1, 2.5], [2, 5]];
-  R.penaltyName = function (lv) { return ['不设壁垒', '有点意思', '真分家'][lv] || '有点意思'; };
+  R.penaltyName = function (lv) { return ['同集团子公司', '同集团控股', '不同集团'][lv] || '同集团控股'; };
 
   R.ensure = function (g) {
     if (!g) return null;

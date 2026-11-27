@@ -40,6 +40,7 @@
     { id: 'station', group: 'metro', name: '车站客流', icon: 'lyStation', color: '#109e90', desc: '客流与运力负荷' },
     { id: 'gap', group: 'metro', name: '地铁服务缺口', icon: 'lyGap', color: '#b91c1c', desc: '出行需求大但地铁服务不足的地方' },
     { id: 'tod', group: 'metro', name: '商业开发', icon: 'bag', color: '#a8780c', desc: '已开发的车站、每月净收益与值得开发的车站' },
+    { id: 'co', group: 'metro', name: '公司归属', icon: 'briefcase', color: '#7f77dd', desc: '按运营公司给线路着色，多家公司时显示各自版图' },
   ];
   UI.LAYERS = LAYERS;
   UI.weekdayName = function (ck) { const w = new Date(Date.UTC(ck.y, ck.m - 1, ck.d)).getUTCDay(); return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][w] + (w === 0 || w === 6 ? '（周末）' : ''); };
@@ -1810,6 +1811,18 @@
           box.appendChild(h('div', { class: 'tiny muted', style: { margin: '4px 0 2px' } }, '全区 ' + (R.layerOpt.econK === 'pop' ? CM.EconLayer.popText(ec.total.pop) : CM.EconLayer.gdpText(ec.total.gdp)) + ' · 共 ' + ec.districts.length + ' 个区县'));
         }
         note = '按区县连续着色并标出 GDP、常住人口与人均 GDP：区县 GDP = 全城 GDP × 该区岗位占全城岗位的比例（宏观模型口径，随经济与城市发展变化）；人口为城镇人口，人均 GDP = 区 GDP ÷ 区人口。地图放大后还会标出各片区明细。'; break;
+      }
+      case 'co': {
+        const g = self.g(), CS = g && g.companies || [];
+        if (CS.length > 1) {
+          const led = CM.CompaniesUI && CM.CompaniesUI.ledger(g);
+          CS.forEach(function (c) {
+            const L = led && led[c.id];
+            box.appendChild(h('div', { class: 'li' }, h('span', { class: 'swatch', style: { background: c.color } }),
+              c.name + (L ? ' · ' + L.lines + ' 线 / ' + (L.len || 0).toFixed(0) + ' km' : '')));
+          });
+        } else li('#888', '只有一家公司：在任务面板「公司」里拆分公司后这里会显示各自版图');
+        note = '线路按运营公司着色，车站沿用原线路色。跨公司换乘壁垒可在任务面板「公司」里调整；只有一家公司时本图层不生效。'; break;
       }
       case 'jobs': li('#f0963c', '以住宅为主'); li('#9aa0b0', '职住混合'); li('#3468d6', '以就业岗位为主'); note = '颜色越深，人口与岗位越密集。'; break;
       case 'cong': {

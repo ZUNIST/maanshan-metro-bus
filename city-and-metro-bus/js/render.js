@@ -3484,7 +3484,7 @@
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     // 分析图层开启时：地面加一层浅色蒙版，隐藏建筑与车辆，让图层本身清楚可读（渐变过渡）
     this.layerFade = U.clamp((this.layerFade || 0) + (layerOn ? dt : -dt) / 0.25, 0, 1);
-    if (this.layerFade > 0.01 && (congestion || this.layer === 'station' || this.layer === 'tod' || !layerOn)) {
+    if (this.layerFade > 0.01 && this.layer !== 'co' && (congestion || this.layer === 'station' || this.layer === 'tod' || !layerOn)) {
       ctx.fillStyle = U.rgb(TH.fog || TH.bg, (congestion ? 0.2 : 0.5) * this.layerFade); ctx.fillRect(0, 0, this.w, this.h);
     }
     // 经纬网格（视图工具）：画在地面上、建筑之下，保持低调
@@ -3887,7 +3887,12 @@
       if (!line) continue;
       const bb = order[q].bbox;   // 粗略裁剪
       if (bb[2] < v.x0 - 6 || bb[0] > v.x1 + 6 || bb[3] < v.y0 - 6 || bb[1] > v.y1 + 6) continue;
-      const col = AX.line(line);
+      let col = AX.line(line);
+      // 公司归属图层：按运营公司给线路着色（线路本色保留在其他图层，避免破坏辨识）
+      if (this.layer === 'co' && CM.Companies && C.net && C.net.companies && C.net.companies.length > 1) {
+        const c = CM.Companies.get({ companies: C.net.companies }, line.coId);
+        if (c && c.color) col = c.color;
+      }
       let alpha = 1, width = lw;
       // 轻轨类线宽：电车约 0.62 倍、公交约 0.48 倍，一眼能和地铁区分；站台本身按站台规模画，S 站天然小一圈
       if (line.sys === 'tram') width = lw * 0.62;
