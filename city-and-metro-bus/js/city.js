@@ -1168,6 +1168,20 @@
       if (best != null) return best;
       return cls >= 4 ? shotYear(name) : null;
     };
+    // 道路位置年代场（v3.77）：按到城镇中心的距离推断道路出现年份（数据见 data_ms.js 的 roadYearField）。
+    // 只在没有名称、或名称没有考据年份时使用：原来的兜底是「整片随片区开放年份一起出现」，
+    // 结果 2000 年开局就铺满 2026 年的支路网（实测 94% 的里程可见）。有了这张场，
+    // 城区核心按 1995/2002 分档，外围逐档推到 2010/2016/2022。
+    const FY = D.roadYearField || null;
+    const fieldYear = function (x, y) {
+      if (!FY || !FY.data) return null;
+      if (!isFinite(x) || !isFinite(y)) return null;
+      // 越界取最靠边的一格：地图边缘的道路本来就在最外档，返回 null 会被当成「随片区开放」而提前出现
+      const bx = Math.min(FY.w - 1, Math.max(0, Math.floor(x / FY.b)));
+      const by = Math.min(FY.h - 1, Math.max(0, Math.floor(y / FY.b)));
+      const k = FY.data.charCodeAt(by * FY.w + bx) - 48;
+      return FY.years[k] != null ? FY.years[k] : null;
+    };
     // 桥段拆分（v3.42）：有些跨江大桥在 OSM 里并进了整条高速的名字（马鞍山长江大桥并进了「沪武高速」），
     // 若按整条高速的通车年份走，桥会晚十几年才出现。数据里用 bridgeSplits 指定：把该道路上位于指定点附近
     // 的路段单独拆成一个以桥名命名的道路组，再由 bridgeYears 给桥单独立年（见 data_ms.js）。
@@ -1225,10 +1239,20 @@
       if (legacy) {
         g.year = CFG.START.y;
       } else if (batches && openY > CFG.START.y && g.cls <= (era.maxCls || 2)) {
+        B.batches = (B.batches||0)+1;
         const seed = Math.abs(Math.floor(g.bbox[0] * 7 + g.bbox[1] * 13 + g.bbox[2] * 3)) % batches.length;
         g.year = openY + batches[seed];
       } else {
-        g.year = openY;
+        let fy = fieldYear((g.bbox[0] + g.bbox[2]) / 2, (g.bbox[1] + g.bbox[3]) / 2);
+        // 场只按「块」定年，而一个成熟街区块里塞着上百条巷道。2000 年前的城区只有街区的骨干路，
+        // 短支路与巷弄要到 2002 年以后才逐步硬化，否则老城一开局就是 2026 年的路网密度。
+        if (fy != null && fy <= 2000 && g.cls <= 2) {
+          let L = 0;
+          for (const p of g.ways) for (let k = 2; k + 1 < p.length; k += 2) L += Math.hypot(p[k] - p[k - 2], p[k + 1] - p[k - 1]);
+          if (L * 0.25 < 0.6) fy = 2002;
+        }
+        g.year = fy == null ? openY : Math.max(openY, fy);
+        if (fy != null) g.fromField = true;   // 场已经按位置分过年，不要再被 roadEra.bands 重置
       }    }
     // linkRoadYears（v2.8）：没有名称的快速路匝道跟随相连的晚通车道路，快速路还没修时匝道不先出现（连续匝道逐轮传递）
     if (D.linkRoadYears) {
@@ -1259,7 +1283,7 @@
     if (ERA && ERA.bands) {
       const bl = ERA.batches || [0, 0, 0];
       for (const g of groups) {
-        if (g.sim || g.year > CFG.START.y || g.cls > (ERA.maxCls || 2)) continue;
+        if (g.sim || g.fromField || g.year > CFG.START.y || g.cls > (ERA.maxCls || 2)) continue;
         const cx = (g.bbox[0] + g.bbox[2]) / 2, cy = (g.bbox[1] + g.bbox[3]) / 2;
         for (const b of ERA.bands) {
           const dx = cx - b.c[0], dy = cy - b.c[1];
