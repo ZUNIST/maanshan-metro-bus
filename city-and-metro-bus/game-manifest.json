@@ -489,7 +489,8 @@
     "licenses/Rust-MIT.txt": "d9f99f0aaa35a1f95927a6549252d8945a9825940bc075d3b2d2a9305fd63763",
     "licenses/Rust-stdlib-third-party.txt": "ee533c79b006f428351c04607c4ab1f47467435094db790ca3b04038399ae956",
     "licenses/Simple-Icons-CC0-1.0.txt": "9046848b63a5c92bff14e4accca80bd987e0623b74adf9226ce5198d312b79d5",
-    "js/companies.js": "cf75902db448d60611796618662aa11750a7ec0703690b36b931cfe96527e568",
-    "js/companies-ui.js": "d5a25da663fe9afc6f38249bd62ad1b80ed789184cef7e2fcbdf2e6190bfda14"
+    "js/companies.js": "c06cdeb7df5b3ce05988f78f2e3c4762aee55c67b72acd266cce4216e89a6b3a",
+    "js/companies-ui.js": "3ccd90612aef8c54dcd48cc564055daee3978e93a19d5e6c0737806df1a6bc0b",
+    "多公司运营说明.md": "3e696485b0ee5387e6e8288dee7891eeb7242aaf4ca943e6a4ed8ee1e86b0da6"
   }
 }

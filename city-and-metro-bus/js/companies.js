@@ -8,7 +8,8 @@
   const R = CM.Companies = {};
 
   const DEFAULT = [{ id: 0, name: '城市地铁', color: '#2b7ea8' }];
-  const PALETTE = ['#2b7ea8', '#d4537e', '#ba7517', '#1d9e75', '#7f77dd', '#d85a30'];
+  const MAX = 10;
+  const PALETTE = ['#2b7ea8', '#d4537e', '#ba7517', '#1d9e75', '#7f77dd', '#d85a30', '#639922', '#993556', '#0f6e56', '#854f0b'];
   // 跨公司换乘惩罚档位（广义分钟）：关闭 / 温和 / 明显。加在换乘边的 eT0 上，影响路径选择与分担率。
   R.PENALTY = [[0, 0], [1, 2.5], [2, 5]];
   R.penaltyName = function (lv) { return ['不设壁垒', '有点意思', '真分家'][lv] || '有点意思'; };
@@ -34,8 +35,10 @@
   R.color = function (g, id) { return R.get(g, id).color; };
   R.lineCo = function (L) { return (L && L.coId != null) ? L.coId : 0; };
 
+  R.MAX = MAX;
   R.add = function (g, name) {
     R.ensure(g);
+    if (g.companies.length >= MAX) return -1;
     let id = 0; while (g.companies.some(function (c) { return c.id === id; })) id++;
     g.companies.push({ id: id, name: String(name || ('第 ' + (id + 1) + ' 公司')).slice(0, 16), color: PALETTE[id % PALETTE.length] });
     return id;

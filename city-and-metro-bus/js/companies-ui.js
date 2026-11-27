@@ -96,8 +96,15 @@
 
     // 新公司
     const addIn = h('input', { type: 'text', placeholder: '新公司名称', maxlength: 16, 'aria-label': '新公司名称', style: { width: '150px' } });
+    const full = g.companies.length >= R.MAX;
     body.appendChild(h('div', { class: 'row', style: { marginTop: '10px' } }, addIn,
-      h('button', { class: 'btn sm', onclick: function () { R.add(g, addIn.value.trim()); changed('已新建公司，把线路划给它即可开始运营'); } }, '新建公司')));
+      h('button', { class: 'btn sm' + (full ? ' ghost' : ''), disabled: full ? 'disabled' : null,
+        onclick: function () {
+          if (full) { self.toast('最多 ' + R.MAX + ' 家公司', 'info'); return; }
+          const id = R.add(g, addIn.value.trim());
+          if (id < 0) { self.toast('最多 ' + R.MAX + ' 家公司', 'info'); return; }
+          changed('已新建公司，把线路划给它即可开始运营');
+        } }, full ? '已达上限 ' + R.MAX + ' 家' : '新建公司')));
 
     // 把线路划入某公司的快捷下拉（覆盖所有未在本公司名下的线路）
     body.appendChild(h('h3', null, '线路划转'));
