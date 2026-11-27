@@ -68,8 +68,10 @@ try {
   let live = false;
   for (let i = 0; i < 300; i++) {
     await sleep(1000);
-    const r = await evaluate('!!(window.CM && CM.game && CM.game.city && CM.game.city.N)');
-    if (r.value) { live = true; break; }
+    const r = await evaluate('JSON.stringify({city:!!(window.CM&&CM.game&&CM.game.city), n:(window.CM&&CM.game&&CM.game.city&&CM.game.city.N)||0, boot:(document.querySelector("[data-role=boot-error]")||{}).textContent||""})');
+    if (i % 10 === 0) console.log('WAIT', i, r.value);
+    let j = {}; try { j = JSON.parse(r.value); } catch {}
+    if (j.city && j.n) { live = true; break; }
   }
   if (!live) throw new Error('建城超时');
   await sleep(4000);

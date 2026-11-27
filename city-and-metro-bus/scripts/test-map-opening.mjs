@@ -98,3 +98,18 @@ for (const [map, id] of [['ny', 'lga_air'], ['sy', 'sy_air']]) {
   assert.equal(checkSite(city, cell, 'elevated').ok, false);
 }
 console.log('PASS underground hub construction in Guangzhou, Shanghai, New York and Sydney');
+
+// 每张地图都要能在开局年完整建城：破一次全局引用的改动会在这里整体抛错，
+// 而单张地图的断言（站点、机场）只会覆盖个别图，容易漏。
+for (const id of CM.MAP_ORDER) {
+  const m = CM.MAPS[id];
+  if (!m || !m.data || !m.data.roads) continue;
+  const year = (m.cfg.START && m.cfg.START.y) || 2000;
+  const city = generate(id, year);
+  const groups = city.roadGroups || [];
+  assert.ok(groups.length > 0, id + ' must build a road network at ' + year);
+  assert.ok(city.N > 0, id + ' must have population at ' + year);
+  const built = groups.filter(g => g.year <= year).length;
+  assert.ok(built > 0, id + ' must have roads open at ' + year);
+}
+console.log('PASS every map builds its road network at the opening year');

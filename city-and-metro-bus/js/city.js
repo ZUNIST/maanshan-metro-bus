@@ -1239,7 +1239,6 @@
       if (legacy) {
         g.year = CFG.START.y;
       } else if (batches && openY > CFG.START.y && g.cls <= (era.maxCls || 2)) {
-        B.batches = (B.batches||0)+1;
         const seed = Math.abs(Math.floor(g.bbox[0] * 7 + g.bbox[1] * 13 + g.bbox[2] * 3)) % batches.length;
         g.year = openY + batches[seed];
       } else {

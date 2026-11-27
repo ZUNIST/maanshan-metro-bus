@@ -3,13 +3,15 @@
 一款纯前端的城市轨道交通模拟游戏。v3.50 起已把 [VinsonFung/city-and-metro](https://github.com/VinsonFung/city-and-metro) 原作者的 **v2.9.5** 更新合并进来，并保留下列马鞍山分支内容。
 新增**马鞍山**地图（含山、和县、花山、雨山、博望、当涂全域，416 × 328 格 / 约 104 × 82 km），并加入**公共汽车**制式。
 
-> **在线试玩（当前版 v3.77）：<https://maanshan-metro-bus-v353.app.workbuddy.host/?sharecode=ECMH5POU33>**（网页版，无需安装）
+> **在线试玩（当前版 v3.79）：<https://maanshan-metro-bus-v353.app.workbuddy.host/?sharecode=ECMH5POU33>**（网页版，无需安装）
 > 离线版请下载 Release 里的 zip，解压后双击 `启动游戏.bat`；也可以直接打开 `单文件版/` 里的单文件 HTML。
 
 > **这是社区修改版，不是官方版本。严禁商业使用。**
 >
-> 当前版本 **v3.77**（城市发展、站城开发、列车噪声、四张新地图）
+> 当前版本 **v3.79**（马鞍山 2000 路网重做；含城市发展、站城开发、列车噪声与 26 张地图）
 >
+> 上一版 **v3.77**（城市发展、站城开发、列车噪声、四张新地图）
+
 > 上一版 **v3.75**（市民故事与导航、任务待办、推进报告重做、信息详略两档）
 >
 > 上一版 **v3.74**（合并原作者 v3.0 安全档：南京与迈阿密、结算存档保护）
@@ -48,7 +50,7 @@
 
 ## 在线试玩（网页版）
 
-**当前版（v3.77，推荐）——不用下载，浏览器直接打开**：<https://maanshan-metro-bus-v353.app.workbuddy.host/?sharecode=ECMH5POU33>
+**当前版（v3.79，推荐）——不用下载，浏览器直接打开**：<https://maanshan-metro-bus-v353.app.workbuddy.host/?sharecode=ECMH5POU33>
 
 - 手机、电脑浏览器均可，进度存在本地浏览器里。
 - 链接里的 `?sharecode=ECMH5POU33` 不能删——托管站点要求带这个访问码，删掉会提示「链接不完整」。
