@@ -194,6 +194,9 @@ kbd { font-family: inherit; font-size: 10px; padding: 0 5px; border-radius: 5px;
 .jbtn { font-weight: 600; font-size: 12px; }
 /* 右上操作 */
 .actions { gap: 2px; }
+/* v3.84：加上「公司」后顶栏 8 个按钮，收窄一点并压紧间距，避免挤在一起 */
+#hudTop .actions { gap: 1px; }
+#hudTop .actions .hbtn { width: 37px; }
 .cnt { position: absolute; top: -3px; right: -3px; min-width: 17px; height: 17px; padding: 0 4px; border-radius: 999px; background: var(--bad); color: #fff; font-size: 10px; font-weight: 700; display: grid; place-items: center; border: 2px solid var(--surface-solid); animation: popIn .4s var(--spring); }
 @keyframes popIn { from { transform: scale(0); } to { transform: scale(1); } }
 .hbtn { position: relative; width: 40px; height: 42px; border-radius: 12px; border: 0; background: transparent; cursor: pointer; display: grid; place-items: center; color: var(--muted); transition: background .15s, color .15s, transform .2s var(--spring); }
@@ -1209,6 +1212,7 @@ button:focus-visible, [role="option"]:focus-visible, [role="tab"]:focus-visible,
   .speed .sbtn { height: 30px; min-width: 32px; padding: 0 6px; }
   .cluster.metrics { flex: 1 1 0; padding: 3px; }
   .cluster.actions { padding: 3px; }
+  #hudTop .actions .hbtn { width: 33px; }
   .hbtn { width: 36px; height: 38px; }
   .hbtn.wide-only { display: none; }
   #dock { top: calc(var(--mobile-hud-bottom, 110px) / var(--uiz, 1)); left: 8px; width: 46px; padding: 4px; gap: 2px; max-height: calc((100dvh - var(--mobile-hud-bottom, 110px) - 150px) / var(--uiz, 1)); }
@@ -1948,6 +1952,7 @@ html.vt-theme *, html.vt-theme *::before, html.vt-theme *::after { transition: n
   #hudTop .pill .badge { width: 22px; height: 22px; }
   #hudTop .speed .sbtn { height: 26px; min-width: 28px; }
   #hudTop .hbtn { height: 30px; width: 32px; }
+  #hudTop .actions .hbtn { width: 29px; }
   #hudTop .metrics, #hudTop .actions { padding: 2px; }
   #rightPanel .p-head { min-height: 40px; padding: 4px 8px; }
   #rightPanel .p-head .badge { width: 26px; height: 26px; }

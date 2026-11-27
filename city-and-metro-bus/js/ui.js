@@ -49,6 +49,7 @@
     build: ['hammer', 'b-blue'], station: ['station', 'b-teal'], line: ['route', 'b-blue'], road: ['car', 'b-orange'], zone: ['map', 'b-slate'],
     finance: ['coin', 'b-gold'], tasks: ['flag', 'b-violet'], date: ['clock', 'b-teal'], saves: ['save', 'b-blue'], help: ['help', 'b-slate'], data: ['info', 'b-slate'],
     metric: ['chart', 'b-blue'], multi: ['layers', 'b-blue'], facility: ['pin', 'b-orange'], guide: ['book', 'b-green'],
+    companies: ['briefcase', 'b-violet'], development: ['building', 'b-teal'],
   };
   const METRIC_ICON = { pop: ['people', 'b-blue'], share: ['metro', 'b-teal'], cong: ['car', 'b-orange'], commute: ['timer', 'b-violet'], sat: ['smile', 'b-green'] };
   // 统一交互反馈的范围：按钮、可点击的行与卡片、列表选项与标签页
@@ -131,6 +132,7 @@
       h('div', { class: 'cluster glass actions' },
         hb('search', 'search', '搜索车站、线路、道路、区域', function () { self.openSearch(); }, 'ui.search'),
         taskBtn,
+        hb('companies', 'briefcase', '公司运营', function () { self.openTop('companies'); }, 'ui.companies'),
         hb('development', 'building', '城市发展', function () { self.openTop('development'); }, 'ui.development'),
         hb('stats', 'chart', '城市统计', function () { self.openStats(); }, 'ui.stats'),
         hb('theme', 'moon', '深色模式', function () { self.toggleTheme(); }, 'ui.theme'),
@@ -795,6 +797,7 @@
     }
     this.mFold.classList.toggle('has-on', !!this.mMore.querySelector('.pill.on'));
     this.hbtns.tasks.classList.toggle('on', !!top && top.kind === 'tasks');
+    if (this.hbtns.companies) this.hbtns.companies.classList.toggle('on', !!top && top.kind === 'companies');
     if (this.hbtns.development) this.hbtns.development.classList.toggle('on', !!top && top.kind === 'development');
   };
   // 存档状态：注明已保存的是哪个游戏时刻，避免把旧快照当作当前进度
@@ -2029,6 +2032,10 @@
       this.openPage('tasks', tab, { root: true });
     }
     else if (key === 'save') this.openPage('saves', null, { toggle: true, root: true });
+    else if (key === 'companies') {
+      if (open && top.kind === 'companies') { this.closePanel(); return; }
+      this.openPage('companies', null, { root: true });
+    }
     else if (key === 'development') {
       if (open && top.kind === 'development') { this.closePanel(); return; }
       this.openPage('development', 'project', { root: true });

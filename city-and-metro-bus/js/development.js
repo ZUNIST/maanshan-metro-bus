@@ -97,6 +97,53 @@
     return dist.subarray(n);
   }
 
+  // 建成站即可计入步行覆盖（v3.84，按玩家反馈）。
+  // sim.computeAccess 只对「已接入线路」的车站算 cellWalk，孤站（站已建好但还没接线）完全不进 acc，
+  // 于是玩家先建站、后接线时，选地判定一直是 0 覆盖，卡在城市发展这一环。
+  // 这里改用 acc.trees（未接线的车站也保留了步行树），按「站已建成」算 800 米步行覆盖。
+  function builtCoverage(city, cells, net) {
+    const acc = net && net.acc, C = net && net.C;
+    if (!acc || !acc.trees || !C || !C.stations) return null;
+    const VW = city.VW, W = city.W, extra = CM.CFG.walk.cellExtraM || 60;
+    const index = new Map();
+    let bx0 = Infinity, by0 = Infinity, bx1 = -Infinity, by1 = -Infinity;
+    for (let i = 0; i < cells.length; i++) {
+      const c = cells[i]; index.set(c, i);
+      const x = c % W, y = (c - x) / W;
+      if (x < bx0) bx0 = x; if (x > bx1) bx1 = x;
+      if (y < by0) by0 = y; if (y > by1) by1 = y;
+    }
+    const best = new Float32Array(cells.length).fill(Infinity);
+    let stations = 0;
+    // 步行路程一定不小于直线距离：站离选区超过 8 格（2 km）时，800 米内不可能盖到选区，整棵树跳过
+    const pad = 8;
+    for (let k = 0; k < C.stations.length; k++) {
+      const st = C.stations[k];
+      if (!st || st.x < bx0 - pad || st.x > bx1 + pad || st.y < by0 - pad || st.y > by1 + pad) continue;
+      const tree = acc.trees[k];
+      if (!tree || !tree.verts) continue;
+      stations++;
+      const myMax = C.accM && C.accM[k] ? C.accM[k] : CM.CFG.walk.maxAccessM;
+      const lim = Math.min(walkLimit, myMax);
+      const verts = tree.verts, dist = tree.dist;
+      for (let q = 0; q < verts.length; q++) {
+        const d = dist[q] + extra;
+        if (d > lim) continue;
+        const v = verts[q], i = v % VW, j = (v - i) / VW;
+        // 顶点是格的角点：同时属于四个相邻格
+        for (let s2 = 0; s2 < 4; s2++) {
+          const x = i - (s2 & 1), y = j - (s2 >> 1);
+          if (x < bx0 || x > bx1 || y < by0 || y > by1) continue;
+          const at = index.get(y * W + x);
+          if (at !== undefined && d < best[at]) best[at] = d;
+        }
+      }
+    }
+    let covered = 0;
+    for (let i = 0; i < best.length; i++) if (best[i] <= walkLimit) covered++;
+    return { covered: covered, stations: stations };
+  }
+
   function service(g, cells, type, phase) {
     const model = g.model, net = model?.net;
     const result = { cells: [], covered: 0, linked: null, room: null, openStations: 0, darkStations: 0, status: '等待交通数据' };
@@ -121,6 +168,7 @@
       }
     }
     const outside = new Map(), stationCells = new Map();
+    let servedCells = 0;
     for (const c of cells) {
       const z = city.zoneOf(c);
       const inside = outside.get(z) || { pop: 0, jobs: 0 };
@@ -131,8 +179,13 @@
       if (s < 0 || acc.cellWalk[c] > walkLimit) continue;
       if (!stationCells.has(s)) stationCells.set(s, []);
       stationCells.get(s).push(c);
-      result.covered++;
+      servedCells++;
     }
+    // 步行覆盖按「已建成车站」计：只要站建好了（哪怕还没接线）就算覆盖，
+    // 有效连接仍按接入线路的车站算（serve() 里那条链路不变）。
+    let built = null;
+    try { built = builtCoverage(city, cells, net); } catch (e) { built = null; }   // 兜底：取不到步行树时退回旧口径，不能因为算覆盖把面板弄崩
+    result.covered = built ? built.covered : servedCells;
     if (result.covered * 2 < cells.length) {
       const need = Math.ceil(cells.length / 2) - result.covered;
       return { ...result, need: need, status: '至少一半地块需在车站步行 800 米内（还差 ' + need + ' 格）' };
@@ -303,7 +356,7 @@
           (report.linked == null ? ' · 有效连接待评估（先满足步行覆盖）'
             : ' · 有效连接 ' + report.linked + ' 格' + (p.phase ? ' · 高峰有余量 ' + report.room + ' 格' : '')));
         // 只统计已开通运营的车站：把未开通的车站数量说出来，避免看成「建了站却不给覆盖」
-        if (report.darkStations) line('选区内 ' + (report.openStations + report.darkStations) + ' 座车站中 ' + report.darkStations + ' 座尚未开通运营，不计入步行覆盖。');
+        if (report.darkStations) line('选区内 ' + (report.openStations + report.darkStations) + ' 座车站中 ' + report.darkStations + ' 座尚未接入线路：计入步行覆盖，但不产生有效连接。');
         const months = p.opened == null ? 0 : Math.max(0, g.ym() - p.opened + 1);
         const left = openPop + openJobs;
         if (p.carryPop || p.carryJobs) line('往期尚有 ' + amount(p.carryPop || 0) + ' 名居民与 ' + amount(p.carryJobs || 0) + ' 个岗位的容量。');
@@ -393,11 +446,11 @@
     const t = targets(cells.length, 0, draft.type, renewal);
     line('第一期计划新增居民 ' + amount(t.pop) + '、岗位 ' + amount(t.jobs) + '。');
     line('可先签承诺，通车达标后开始投资。后续两期可继续沿用原有线网，并调整发展方向。');
-    line('一期要求半数用地距车站步行 800 米以内（沿实际道路计，只算已开通运营的车站），并在约 45 分钟内连到已有城区。居住区需连到至少 8,000 个岗位，就业区需连到至少 8,000 名居民，混合区需同时满足。后两期还要求可达线路高峰载客率不超过 85%。');
+    line('一期要求半数用地距车站步行 800 米以内（按已建成车站计、沿实际道路量），并在约 45 分钟内连到已有城区（这一条要车站接入线路）。居住区需连到至少 8,000 个岗位，就业区需连到至少 8,000 名居民，混合区需同时满足。后两期还要求可达线路高峰载客率不超过 85%。');
     const first = service(g, cells, draft.type, 0);
     line('步行覆盖 ' + first.covered + ' / ' + cells.length + ' 格' +
       (first.linked == null ? ' · 有效连接待评估（先满足步行覆盖）' : ' · 有效连接 ' + first.linked + ' 格'));
-    if (first.darkStations) line('选区内 ' + (first.openStations + first.darkStations) + ' 座车站中 ' + first.darkStations + ' 座尚未开通运营，不计入步行覆盖。');
+    if (first.darkStations) line('选区内 ' + (first.openStations + first.darkStations) + ' 座车站中 ' + first.darkStations + ' 座尚未接入线路：计入步行覆盖，但不产生有效连接。');
     line(first.status);
     row(button('签署发展承诺', () => {
       g.development = { bounds: draft.bounds.slice(), size: cells.length, phase: 0, type: draft.type, renewal,
