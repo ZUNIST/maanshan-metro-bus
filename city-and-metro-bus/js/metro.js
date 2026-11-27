@@ -732,7 +732,7 @@
     const prefix = { tram: '有轨', bus: '公交' }[sys];
     const suffix = sys === 'bus' ? '路' : '号线';
     const auto = prefix ? prefix + M.lineNumberFor(net, sys) + suffix : (num + ' 号线');
-    net.lines[id] = { id: id, num: num, name: name || auto, color: cols[(num - 1) % cols.length], root: null };
+    net.lines[id] = { id: id, num: num, name: name || auto, color: cols[(num - 1) % cols.length], root: null, coId: 0, coHist: [[0, 0]] };
     if (prefix) {
       const cfg = CFG[sys];
       net.lines[id].sys = sys; net.lines[id].grade = cfg.defaultGrade; net.lines[id].speed = cfg.defaultSpeed;
@@ -877,6 +877,7 @@
     if (A.speed) B.speed = A.speed;
     if (A.sys) B.sys = A.sys;
     if (A.grade) B.grade = A.grade;
+    if (A.coId != null) { B.coId = A.coId; B.coHist = (A.coHist || [[0, A.coId]]).map(function (x) { return x.slice(); }); }
   };
   // ---------------- 运行交路（v2.5 玩家反馈：快慢车、区间车） ----------------
   // 每条线路默认有按顺序停靠所有站的全程交路（不存入 svcs，也不能删除）；line.svcs 记录玩家加开的交路：
@@ -2443,6 +2444,7 @@
     }
     if (M.moveLevels) M.moveLevels(net, other, keep);
     if (B.branchNames) A.branchNames = Object.assign({}, B.branchNames, A.branchNames || {});
+    if (B.coId != null && A.coId != null && B.coId !== A.coId) { if (!A.coHist) A.coHist = [[0, A.coId]]; A.coHist.push([0, B.coId]); A.coId = B.coId; }
     delete net.lines[other];
     const tp = M.lineTopo(net, keep);
     if (tp.topo === 'invalid') return { error: '合并后' + A.name + '「' + tp.reason + '」，不能这样贯通' };

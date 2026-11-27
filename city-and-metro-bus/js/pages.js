@@ -2347,7 +2347,7 @@
     const corp = !!(CM.Corp && CM.Corp.enabled(g));   // 政府合同（v2.5）：经营挑战的真实城市
     const railwayRCs = CM.RailConcessions ? CM.RailConcessions.definitions(g) : [];   // 国铁运营权（v3.17，可多条）
     let tab = id || this.taskTab || 'active';
-    if ((tab === 'ppp' && !corp) || (tab === 'rail' && !railwayRCs.length) || (tab === 'todo' && g.tutorial)) tab = 'active';
+    if ((tab === 'ppp' && !corp) || (tab === 'rail' && !railwayRCs.length) || (tab === 'co' && !CM.CompaniesUI) || (tab === 'todo' && g.tutorial)) tab = 'active';
     this.taskTab = tab;
     const el = h('div', { class: 'tk-page' });
     const tabs = [['active', '进行中 ' + T.active.length, 'flag'], ['done', '已完成 ' + T.done.length, 'check'], ['failed', '未完成 ' + T.failed.length, 'error']];
@@ -2356,6 +2356,7 @@
       tabs.unshift(['todo', '待办' + (todo.n ? ' ' + todo.n : ''), 'tasks']);
     }
     if (railwayRCs.length) tabs.push(['rail', '铁路经营权', 'train']);
+    if (CM.CompaniesUI) tabs.push(['co', '公司' + (g.companies ? ' ' + g.companies.length : ''), 'briefcase']);
     if (corp) tabs.push(['ppp', '合同' + (g.corp ? ' ' + (g.corp.tenders.length + g.corp.contracts.length) : ''), 'briefcase']);
     el.appendChild(this.pageTabs(tabs, tab, function (t) {
       self.taskTab = t; const top = self.stack[self.stack.length - 1]; if (top && top.kind === 'tasks') top.id = t; self.renderPage(false); self.rBody.scrollTop = 0;
@@ -2552,6 +2553,7 @@
           h('button', { class: 'btn sm ghost', onclick: function () { T.decline(g, o.id); g.touch(); self.markUnsaved(); self.rerenderPage(); } }, '不感兴趣')));
     };
     // 国铁运营权（v3.17）：签约接管国铁线路（巢马城际、宁安城际马鞍山段），按班次付费，票款归玩家
+    if (tab === 'co' && CM.CompaniesUI) { CM.CompaniesUI.render(self, body); return el; }
     if (tab === 'rail' && railwayRCs.length) {
       const R = CM.RailConcessions;
       for (const railwayRC of railwayRCs) {

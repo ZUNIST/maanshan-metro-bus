@@ -1687,7 +1687,15 @@
       for (const a of list) for (const b of list) {
         if (a.route === b.route) continue;
         const kind = a.line === b.line ? null : CM.Metro.xferKind(C, s, a.line, b.line);
-        const walk = !kind ? 0 : kind.kind === 'level' ? 2 * mc.levelXferMin : 2 * kind.off;
+        let walk = !kind ? 0 : kind.kind === 'level' ? 2 * mc.levelXferMin : 2 * kind.off;
+        // 多公司运营：跨公司换乘加壁垒惩罚（玩家可调档位，默认温和），与同站台/跨节点惩罚叠加
+        if (CM.Companies && C.net && C.net.companies && C.net.companies.length > 1) {
+          const A = C.net.lines[a.line], B = C.net.lines[b.line];
+          if (A && B && A.coId != null && B.coId != null && A.coId !== B.coId) {
+            const rule = C.net.coRule || { xfer: 1 }, row = CM.Companies.PENALTY[rule.xfer || 0] || CM.Companies.PENALTY[1];
+            walk += row[1];
+          }
+        }
         push(a.plat, b.queue, 4, b.route, -1, 0, s, 0, walk, 0);
       }
     });

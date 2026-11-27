@@ -10,6 +10,8 @@
     this.jumping = null;
     this.draft = null;
     this.railConcession = null;   // 国铁运营权合同（v3.17）：{chaoma:{local,express}, ningan:{...}} 或 null
+    this.companies = null;        // 多公司运营（玩家总揽）：[{id,name,color}]，默认单公司
+    this.coRule = null;           // 跨公司规则：{xfer:0/1/2, fareShare:0/1}
     this.events = [];
     this.history = [];
     this.netVersion = 0;
@@ -60,6 +62,7 @@
       g.model.setDayType(CM.Model.dayType(g.clock.y, g.clock.m, g.clock.d));
       g.traffic = { v: CFG.TRAFFIC_MODEL };
       g.net = M.empty();
+      if (CM.Companies) CM.Companies.ensure(g);
       g.mapInit = buildInitialNetwork(g);   // 开局既有地铁（东京 1950 年等），只在新建时生成一次，随存档保存
       g.compiled = CM.RailConcessions.compile(g.net, g);
       g.model.setNetwork(g.compiled);
@@ -1125,6 +1128,8 @@
       clock: Object.assign({}, this.clock),
       city: this.city.serialize(),
       net: this.net,
+      companies: this.companies,
+      coRule: this.coRule,
       railConcession: this.railConcession || undefined,   // 国铁运营权合同（v3.17，按线存储）
       econ: this.econ.serialize(),
       tasks: this.tasks.serialize(),
@@ -1196,6 +1201,9 @@
       g.model.setDayType(CM.Model.dayType(g.clock.y, g.clock.m, g.clock.d));
       g.model.buildZones(); g.model.buildDemand();
       g.net = s.net;
+      g.companies = s.companies;
+      g.coRule = s.coRule;
+      if (CM.Companies) CM.Companies.ensure(g);   // 旧档兜底：默认单公司
       g.railConcession = s.railConcession || null;   // 国铁运营权合同（v3.17，按线存储，兼容旧扁平格式）
       M.repairStationNames(g.net, g.city);
       // 扩图后旧接驳站保留在线网中。接驳口迁移或机场进入图内时，原站按普通车站运营。

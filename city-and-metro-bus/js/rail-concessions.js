@@ -195,7 +195,11 @@
     return n;
   };
 
-  R.compile = (net, g, state = g.railConcession) => CM.Metro.compile(R.overlay(net, g, state), g.city);
+  R.compile = (net, g, state = g.railConcession) => {
+    // 多公司规则随线网一起送给客流模型（跨公司换乘惩罚）
+    if (CM.Companies) { net.companies = g.companies; net.coRule = g.coRule; }
+    return CM.Metro.compile(R.overlay(net, g, state), g.city);
+  };
 
   // 签约 / 调班次时应付金额（首付或差额，按当月剩余天数折算）。
   R.due = (g, d, plan) => {
