@@ -85,7 +85,7 @@ try {
 
   // 点掉开局简报，进入主界面
   await evaluate(`(function(){ var b=[...document.querySelectorAll('button')].find(x=>/开始规划/.test(x.textContent)); if(b) b.click(); return !!b; })()`);
-  await sleep(4000);
+  await sleep(Number(process.env.CM_WAIT || 4000));
   const main = await send('Page.captureScreenshot', { format: 'png' });
   await writeFile(OUT.replace(/\.png$/, '_main.png'), Buffer.from(main.data, 'base64'));
 
