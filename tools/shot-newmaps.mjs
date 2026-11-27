@@ -9,6 +9,7 @@ const CHROME = 'C:/Program Files/Google/Chrome/Application/chrome.exe';
 const PORT = 9345 + Math.floor(Math.random() * 40);
 
 const child = spawn(CHROME, ['--headless=new', '--disable-gpu', '--hide-scrollbars', '--window-size=1600,1000',
+  '--disable-background-timer-throttling', '--disable-backgrounding-occluded-windows', '--disable-renderer-backgrounding',
   `--remote-debugging-port=${PORT}`, `--user-data-dir=C:/Users/zuni/WorkBuddy/2026-11-15-15-18-24/.chromeprof-${PORT}`, 'about:blank'], { stdio: 'ignore' });
 
 const sleep = ms => new Promise(r => setTimeout(r, ms));

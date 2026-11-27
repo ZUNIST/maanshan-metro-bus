@@ -317,6 +317,32 @@
       }));
       return card;
     }
+    // 视野中心自动选地（v3.81）：不依赖地图点击的事件链，先给一个可用的选区，再让玩家按需微调
+    row(button('选视野中心', () => {
+      const v = ui.R && ui.R.view;
+      if (!v) return;
+      const cx = Math.round((v.x0 + v.x1) / 2), cy = Math.round((v.y0 + v.y1) / 2);
+      // 从视野中心向外找最近的可开发窗口（视野中心落在水域、工业用地或邻市背景时也能给出可用选区）
+      const city = g.city, cand = (x0, y0) => {
+        const b = [x0, y0, x0 + 11, y0 + 7];   // 12×8 = 96 格，正好是面积上限
+        return parcel(city, b).length >= 4 ? b : null;
+      };
+      let bounds = null;
+      for (let r = 0; r <= 30 && !bounds; r++) {
+        for (let dy = -r; dy <= r && !bounds; dy++) {
+          for (let dx = -r; dx <= r && !bounds; dx++) {
+            if (r && Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+            const x0 = Math.max(0, Math.min(city.W - 12, cx + dx - 6)), y0 = Math.max(0, Math.min(city.H - 8, cy + dy - 4));
+            bounds = cand(x0, y0);
+          }
+        }
+      }
+      if (!bounds) { ui.toast('视野附近没有可开发的用地，请先移动到已开放城区', 'warn'); return; }
+      ui.developmentDraft = { game: g, bounds, type: 'mixed' };
+      ui.R.developmentArea = { game: g, bounds };
+      ui.locatePoint((bounds[0] + bounds[2] + 1) / 2, (bounds[1] + bounds[3] + 1) / 2, '城市发展地块', 6);
+      refresh();
+    }));
     row(button(draft ? '重新选地' : '在地图上选地', () => {
       ui.developmentDraft = null;
       ui.R.developmentArea = null;

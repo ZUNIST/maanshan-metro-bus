@@ -694,6 +694,32 @@
   Tools.prototype.onClick = function (sx, sy, mod, multiKey, bend) {
     const g = this.game(), R = this.R;
     if (g.jumping) return;
+    // 城市发展：选地模式（v3.81 补齐）。之前只把 developmentPick 标记挂上、没接点击，导致「在地图上选地」点了没反应。
+    if (this.developmentPick && this.developmentPick.game === g && !mod && !bend) {
+      const w0 = this.world(sx, sy, 0);
+      const cx = Math.floor(w0.x), cy = Math.floor(w0.y), city = g.city;
+      if (cx < 0 || cy < 0 || cx >= city.W || cy >= city.H) return;
+      const dp = this.developmentPick;
+      if (!dp.first) {
+        dp.first = [cx, cy];
+        R.developmentArea = { game: g, bounds: [cx, cy, cx, cy] };
+        this.ui.toast('已定第一个角，再点对角完成选区（按 Esc 取消）', 'info');
+        return;
+      }
+      // 每边最多 12 格：超出时以第一角为基准收窄
+      const ax = dp.first[0], ay = dp.first[1];
+      const x0 = Math.min(ax, cx), y0 = Math.min(ay, cy);
+      let x1 = Math.min(Math.max(ax, cx), x0 + 11), y1 = Math.min(Math.max(ay, cy), y0 + 11);
+      // 面积上限 96 格（development 的 parcel 会拒绝超过上限的选区，之前这里按 12×12 生成导致永远选不上）
+      const maxH = Math.max(1, Math.floor(96 / (x1 - x0 + 1)) - 1);
+      if (y1 - y0 > maxH) y1 = y0 + maxH;
+      this.developmentPick = null;
+      R.developmentArea = { game: g, bounds: [x0, y0, x1, y1] };
+      this.ui.developmentDraft = { game: g, bounds: [x0, y0, x1, y1], type: 'mixed' };
+      this.ui.openPage('development', 'project', { root: true });
+      sfx('place');
+      return;
+    }
     let w = this.world(sx, sy, this.buildH());
     let st = bend ? null : R.pickStation(sx, sy);
     let seg = st || bend ? null : R.pickSegment(sx, sy);

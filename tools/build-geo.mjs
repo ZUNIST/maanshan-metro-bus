@@ -210,18 +210,30 @@ try {
 } catch (e) { /* 没有补充数据就跳过 */ }
 console.log('高德路网补充:', amapRoadN, '条');
 
-// ---------- 街区内部路（只进 streets，不进车行路网）----------
+// ---------- 街区内部路 ----------
+// v3.81：service（小区内部路、厂区路、停车场通道）并入车行路网，按支路（cls 2）处理，
+// 让新区与产业园的路网密度与现状一致；living_street 仍只作细线（避免住宅街巷压过主干）。
 const minorRaw = await load('minor');
-let minorN = 0;
+let minorN = 0, serviceN = 0;
 for (const e of minorRaw) {
   if (e.type !== 'way' || !e.geometry || e.geometry.length < 2) continue;
-  const hw = (e.tags && e.tags.highway) || '';
+  const t = e.tags || {};
+  const hw = t.highway || '';
   if (hw !== 'service' && hw !== 'living_street') continue;
   const f = geoOf(e.geometry);
   if (!inBox(f)) continue;
-  const s = enc(dp(f, 0.1, false));
+  const s = enc(dp(f, hw === 'service' ? 0.09 : 0.1, false));
   if (s.length < 4) continue;
-  streets.push(s); minorN++;
+  if (hw === 'service') {
+    let flags = 0;
+    if (t.bridge && t.bridge !== 'no') flags |= 1;
+    if (t.tunnel && t.tunnel !== 'no') flags |= 2;
+    roadsOut.push([nm(t.name || ''), 2, flags, s]);
+    serviceN++;
+  } else {
+    streets.push(s);
+  }
+  minorN++;
 }
 
 // ---------- 铁路 ----------
@@ -445,7 +457,7 @@ ${adminOut.map(r => '      ' + JSON.stringify(r)).join(',\n')}
 await writeFile(OUT, body);
 const mb = (body.length / 1048576).toFixed(2);
 console.log(JSON.stringify({
-  out: OUT, MB: mb, names: names.length, water: water.length, waterLines: wl, roads: roadsOut.length,
+  out: OUT, MB: mb, names: names.length, water: water.length, waterLines: wl, roads: roadsOut.length, service: serviceN,
   streets: streets.length, rail: railOut.length, parks: parksOut.length, woods: woodsOut.length,
   reserves: reservesOut.length, admin: adminOut.length, places: placesOut.length, skippedWater: skipped,
 }));
