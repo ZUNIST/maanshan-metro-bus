@@ -2553,7 +2553,7 @@
           h('button', { class: 'btn sm ghost', onclick: function () { T.decline(g, o.id); g.touch(); self.markUnsaved(); self.rerenderPage(); } }, '不感兴趣')));
     };
     // 国铁运营权（v3.17）：签约接管国铁线路（巢马城际、宁安城际马鞍山段），按班次付费，票款归玩家
-    if (tab === 'co' && CM.CompaniesUI) { CM.CompaniesUI.render(self, body); return el; }
+    if (tab === 'co' && CM.CompaniesUI) { CM.CompaniesUI.render(self, body); return { title: '公司运营', el: el }; }
     if (tab === 'rail' && railwayRCs.length) {
       const R = CM.RailConcessions;
       for (const railwayRC of railwayRCs) {
