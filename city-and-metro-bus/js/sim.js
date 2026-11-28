@@ -276,10 +276,10 @@
   const SKIM_BLOCKS = 16;
   const OD_OUT = ['carDem', 'hasCar', 'S', 'pT', 'pM', 'zTrips', 'zMetro', 'zAccess', 'zCW', 'zCT', 'desTot', 'desMetro',
     'zDest', 'zDestM', 'fIn', 'fInM', 'fOut', 'fOutM', 'fP', 'fPM', 'DS', 'choices', 'zBgR', 'zBgF', 'bgDS', 'bgS'];
-  const OD_FIXED = ['Z', 'NZ', 'B', 'odStart', 'odDest', 't0', 't1', 't2', 't3', 't4', 't5', 'hostZ', 'nx', 'ny', 'kmPerCell', 'blocks', 'pkO', 'pkR', 'ckR'];
+  const OD_FIXED = ['Z', 'NZ', 'B', 'odStart', 'odDest', 't0', 't1', 't2', 't3', 't4', 't5', 'hostZ', 'nx', 'ny', 'kmPerCell', 'blocks', 'pkO', 'pkR', 'ckR', 'coN', 'coOf'];
   const OD_MOVE = { gtS: 1, tmS: 1, kmS: 1, trS: 1, brS: 1 };
   const OD_INPUT = ['N', 'co', 'cr', 'facW', 'facWe', 'odOk', 'skT', 'skK', 'zJ', 'cpk', 'park', 'vot', 'carAccess',
-    'walkW', 'occ', 'theta', 'fareFlat', 'fareKm0', 'fareStep', 'fareInc', 'fareCap', 'fareTab', 'fareFlatT', 'fareKm0T', 'fareStepT', 'fareIncT', 'fareCapT', 'fareTabT', 'fareFlatB', 'fareKm0B', 'fareStepB', 'fareIncB', 'fareCapB', 'fareTabB', 'bgShare', 'bgSpeed', 'bgWait', 'bgFare', 'roadKeep', 'bgRoad', 'bgSlow', 'accOk', 'gtS', 'tmS', 'kmS', 'trS', 'brS', 'perMin', 'capSh', 'capLz', 'habit', 'habAsc', 'habLite', 'hubAsc', 'hubFeed', 'hubEligible',
+    'walkW', 'occ', 'theta', 'fareFlat', 'fareKm0', 'fareStep', 'fareInc', 'fareCap', 'fareTab', 'fareFlatT', 'fareKm0T', 'fareStepT', 'fareIncT', 'fareCapT', 'fareTabT', 'fareFlatB', 'fareKm0B', 'fareStepB', 'fareIncB', 'fareCapB', 'fareTabB', 'bgShare', 'bgSpeed', 'bgWait', 'bgFare', 'roadKeep', 'bgRoad', 'bgSlow', 'accOk', 'gtS', 'tmS', 'kmS', 'trS', 'brS', 'coKm', 'perMin', 'capSh', 'capLz', 'habit', 'habAsc', 'habLite', 'hubAsc', 'hubFeed', 'hubEligible',
     'bgNB', 'bgG', 'bgA', 'bgF', 'bgKM', 'bgZs', 'bgZg', 'bgZt', 'bgMax'];  function odWorkerMain() {
     let basis = null, id = 0, work = {};
     onmessage = function (e) {
@@ -545,6 +545,26 @@
       if (inc > 0 && m > km0) { n = Math.ceil((m - km0) / step - 1e-9); f += n * inc; if (cap > 0 && f > cap) f = cap; }
       return { fare: f, tab: tab[n > tabN ? tabN : n] };
     }
+    // 各公司分开计价（v3.89）：地铁里程按公司拆开，各自按本公司的票制计费后相加。
+    // 跨公司出行因此每家各收一次起步价——这就是公司边界的真实代价，不再有「全网算完再按比例分」。
+    const CO_N = K.coN | 0, CO_KM = K.coKm;
+    const coScratch = CO_N > 1 ? new Float64Array(CO_N) : null;
+    let coHit = 0;
+    const metroLeg = function (m, ob) {
+      coHit = 0;
+      if (!CO_KM || CO_N <= 1) return legFare(m, fareFlat, fareKm0, fareStep, fareInc, fareCap, fareTab, fareTabN);
+      let total = 0, tab = 0, n = 0;
+      for (let c = 0; c < CO_N; c++) {
+        const kc = CO_KM[c][ob];
+        if (kc > 0.0005) {
+          const g = legFare(kc, fareFlat, fareKm0, fareStep, fareInc, fareCap, fareTab, fareTabN);
+          coScratch[c] = g.fare; total += g.fare; tab += g.tab; n++;
+        } else coScratch[c] = 0;
+      }
+      if (!n) return legFare(m, fareFlat, fareKm0, fareStep, fareInc, fareCap, fareTab, fareTabN);
+      coHit = n;
+      return { fare: total, tab: tab };
+    };
     const bgShare = K.bgShare || 0, bgSpeed = K.bgSpeed, bgWait = K.bgWait, bgFare = K.bgFare, roadKeep = K.roadKeep || 0, bgRoad = K.bgRoad != null ? K.bgRoad : -1, bgSlow = K.bgSlow || 1;
     const acc = K.acc, accOk = K.accOk, zCov = acc ? acc.zCov : null, zl = acc ? acc.zl : null, choices = K.choices;
     const pkO = K.pkO, pkR = K.pkR, ckR = K.ckR;
@@ -571,6 +591,9 @@
       v = t5[k]; if (v) { const a = v * co[5] * fw, b = v * cr[5] * fw; cO[5] = a; cR[5] = b; F1 += a; F2 += b; } else { cO[5] = 0; cR[5] = 0; }
       for (let dir = 0; dir < 2; dir++) {
         const isOut = dir === 0, o = isOut ? i : j, d = isOut ? j : i, F0 = isOut ? F1 : F2, comp = isOut ? cO : cR;
+        // 逐公司票款是跨 OD / 跨方向复用的临时量：每个方向开头清零，否则本次没走到 metroLeg
+        // 时会沿用上一次的 coHit/coScratch，把票款重复计到公司账上（分项合计 > 总票款）。
+        if (coScratch) { coHit = 0; coScratch.fill(0); }
         if (F0 <= 0) continue;
         const ho = hostZ[o], hd = hostZ[d], pi = isOut ? pkO[k] : pkR[k];
         let ct = Math.abs(skT[pi]), ck = Math.abs(skK[pi]);
@@ -643,7 +666,7 @@
                 // 一次出行跨制式：地铁 / 电车 / 公交各段按自己的票制累进，票款与各段折合分钟都相加（现实里换乘要重新买票）
                 let mMet = mKm - mTr - mBus; if (mMet < 0) mMet = 0;
                 let totalFare = 0, totalMin = 0;
-                if (mMet > 0.001) { const g = legFare(mMet, fareFlat, fareKm0, fareStep, fareInc, fareCap, fareTab, fareTabN); totalFare += g.fare; totalMin += g.tab; }
+                if (mMet > 0.001) { const g = metroLeg(mMet, bs * N + bt); totalFare += g.fare; totalMin += g.tab; }
                 if (mTr > 0.001 && fareFlatT != null) { const g = legFare(mTr, fareFlatT, fareKm0T, fareStepT, fareIncT, fareCapT, fareTabT, fareTabTN); totalFare += g.fare; totalMin += g.tab; }
                 if (mBus > 0.001 && fareFlatB != null) { const g = legFare(mBus, fareFlatB, fareKm0B, fareStepB, fareIncB, fareCapB, fareTabB, fareTabBN); totalFare += g.fare; totalMin += g.tab; }
                 // 全程没落到地铁段（纯电车/纯公交出行）时，至少收一段基础票
@@ -651,10 +674,9 @@
                 fare = totalFare;
                 gtM = best + totalMin;
               } else {
-                fare = fareFlat;
-                let fareN = 0;
-                if (fareInc > 0 && mKm > fareKm0) { fareN = Math.ceil((mKm - fareKm0) / fareStep - 1e-9); fare += fareN * fareInc; if (fareCap > 0 && fare > fareCap) fare = fareCap; }
-                gtM = best + fareTab[fareN > fareTabN ? fareTabN : fareN];
+                const g = metroLeg(mKm, bs * N + bt);
+                fare = g.fare;
+                gtM = best + g.tab;
               }
               pMc = 1 / (1 + Math.exp(theta * (gtM - gtCar - habAsc * hb)));
               q = fo * fd * pMc;
@@ -716,6 +738,11 @@
         S[3] += car * tCar + mW * mTime + fM * fTime;
         S[4] += car * tCar; S[5] += mW * mTime + fM * fTime;
         S[6] += mW * fare + fM * fFare; S[7] += mW * mKm + fM * fKm; S[8] += car * ck; S[9] += onRoad / occ * ck * roadF;
+        // 各公司自收票款（分开计价）：每家公司按本公司的乘车里程单独计费，不做全网分摊
+        if (coScratch) {
+          if (coHit) for (let c = 0; c < CO_N; c++) if (coScratch[c] > 0) S[14 + c] += mW * coScratch[c];
+          if (fM > 0) S[14] += fM * fFare;   // 枢纽接驳的票款归第一家公司（量很小）
+        }
         const cw = comp[HW] / F0;
         if (cw > 0) { const mb = F0 * q, tc = ((F0 - mb) * tCar + mb * mTime) * cw; S[10] += comp[HW]; S[11] += tc; zCW[ho] += comp[HW]; zCT[ho] += tc; }
         for (let p = 0; p < NPK; p++) { const c = comp[p]; if (c) { pT[p] += c; pM[p] += c * (p === 5 ? qH : q) + (p === 5 ? fM : 0); } }
@@ -746,9 +773,13 @@
     const N = net.N, nn = net.nNodes, outStart = net.outStart, outEdge = net.outEdge, eTo = net.eTo, eKm = net.eKm;
     const gt = store.gt, tm = store.tm, km = store.km, tr = store.tr, br = store.br, pred = store.pred, order = store.order, nOrd = store.nOrd, eTram = net.eTram, eBus = net.eBus;
     const dist = work.dist, dtm = work.dtm, dkm = work.dkm, dtr = work.dtr, dbr = work.dbr, row = s - (r0 || 0);
+    // 各公司分开计价（v3.89）：沿最短路树同时累计「在本公司线路上坐了多少公里」。
+    // coN=1 时不启用，开销为零。
+    const coN = net.coN | 0, eCo = net.eCo, dco = coN > 1 ? work.dco : null, coStore = store.co;
     dist.fill(INF);
     heap.clear();
     dist[s] = 0; dtm[s] = 0; dkm[s] = 0; dtr[s] = 0; dbr[s] = 0;
+    if (dco) for (let i = 0; i < coN; i++) dco[s * coN + i] = 0;
     const pb = row * nn;
     pred[pb + s] = -1;
     heap.push(0, s);
@@ -759,7 +790,11 @@
       order[pb + no++] = u;
       for (let k = outStart[u]; k < outStart[u + 1]; k++) {
         const e = outEdge[k], v = eTo[e], nd = du + cost[e];
-        if (nd < dist[v]) { dist[v] = nd; dtm[v] = dtm[u] + tAct[e]; dkm[v] = dkm[u] + eKm[e]; dtr[v] = dtr[u] + (eTram[e] ? eKm[e] : 0); dbr[v] = dbr[u] + (eBus && eBus[e] ? eKm[e] : 0); pred[pb + v] = e; heap.push(nd, v); }
+        if (nd < dist[v]) {
+          dist[v] = nd; dtm[v] = dtm[u] + tAct[e]; dkm[v] = dkm[u] + eKm[e]; dtr[v] = dtr[u] + (eTram[e] ? eKm[e] : 0); dbr[v] = dbr[u] + (eBus && eBus[e] ? eKm[e] : 0); pred[pb + v] = e; heap.push(nd, v);
+          if (dco) { const ub = u * coN, vb = v * coN, c = eCo[e], l = eKm[e];
+            for (let i = 0; i < coN; i++) dco[vb + i] = dco[ub + i] + (i === c ? l : 0); }
+        }
       }
     }
     nOrd[row] = no;
@@ -767,8 +802,10 @@
     for (let t = 0; t < N; t++) {
       const exit = net.exits[t];
       // 至少包含一段实际乘车（乘车里程 > 0）；只靠站外步行连通的路径不算地铁行程
-      if (dist[exit] >= INF || t === s || !(dkm[exit] > 0)) { gt[ob + t] = INF; tm[ob + t] = 0; km[ob + t] = 0; tr[ob + t] = 0; br[ob + t] = 0; continue; }
-      gt[ob + t] = dist[exit] - tpen; tm[ob + t] = dtm[exit]; km[ob + t] = dkm[exit]; tr[ob + t] = dtr[exit]; br[ob + t] = dbr[exit];    }
+      if (dist[exit] >= INF || t === s || !(dkm[exit] > 0)) { gt[ob + t] = INF; tm[ob + t] = 0; km[ob + t] = 0; tr[ob + t] = 0; br[ob + t] = 0; if (coStore) for (let i = 0; i < coN; i++) coStore[i][ob + t] = 0; continue; }
+      gt[ob + t] = dist[exit] - tpen; tm[ob + t] = dtm[exit]; km[ob + t] = dkm[exit]; tr[ob + t] = dtr[exit]; br[ob + t] = dbr[exit];
+      if (coStore) { const eb = exit * coN; for (let i = 0; i < coN; i++) coStore[i][ob + t] = dco[eb + i]; }
+    }
   }
   // 车站 s0..s1 出发的客流沿最短路树回溯到各区间。D 的第 0 行对应车站 dBase，路径表的第 0 行对应车站 r0。
   // 会原样复制到工作线程执行；每段各自累加，再按段的顺序合计（见 iterate），线程多少不影响结果
@@ -1688,12 +1725,13 @@
         if (a.route === b.route) continue;
         const kind = a.line === b.line ? null : CM.Metro.xferKind(C, s, a.line, b.line);
         let walk = !kind ? 0 : kind.kind === 'level' ? 2 * mc.levelXferMin : 2 * kind.off;
-        // 多公司运营：跨公司换乘加壁垒惩罚（玩家可调档位，默认温和），与同站台/跨节点惩罚叠加
+        // 多公司运营（v3.90）：跨公司换乘按「公司对协议矩阵」逐对取时间代价，
+        // 与同站台/跨节点惩罚叠加。四档：直通 0 / 一票 2.5 / 出站 8 / 不互通 18 分钟。
+        // 同公司、单公司为 0；未逐对设定的公司对回退全局 xfer 档（兼容旧档）。
         if (CM.Companies && C.net && C.net.companies && C.net.companies.length > 1) {
           const A = C.net.lines[a.line], B = C.net.lines[b.line];
           if (A && B && A.coId != null && B.coId != null && A.coId !== B.coId) {
-            const rule = C.net.coRule || { xfer: 1 }, row = CM.Companies.PENALTY[rule.xfer || 0] || CM.Companies.PENALTY[1];
-            walk += row[1];
+            walk += CM.Companies.agreementMin({ coRule: C.net.coRule, companies: C.net.companies }, A.coId, B.coId);
           }
         }
         push(a.plat, b.queue, 4, b.route, -1, 0, s, 0, walk, 0);
@@ -1708,10 +1746,27 @@
     }
     for (const s of walkEnds) push(s, exits[s], 5, -1, -1, 0, s, 0, 0, 0);
     const nE = E.from.length;
+    // 各公司分开计价（v3.89）：每条乘车边属于哪家公司，用紧凑索引（0..coN-1），
+    // 好在最短路上按公司累计里程。只有一家公司时 coN=1，下面的逻辑全部跳过，行为与旧版完全一致。
+    const coOf = [], coIdx = new Map();
+    for (let r = 0; r < R; r++) {
+      const L = C.net && C.net.lines ? C.net.lines[C.routes[r].lineId] : null;
+      const id = L && L.coId != null ? L.coId : 0;
+      if (!coIdx.has(id)) { coIdx.set(id, coOf.length); coOf.push(id); }
+    }
+    if (!coOf.length) { coIdx.set(0, 0); coOf.push(0); }
+    const eCo = new Uint8Array(nE);
+    for (let e = 0; e < nE; e++) {
+      const r = E.route[e];
+      if (r < 0) continue;
+      const L = C.net && C.net.lines ? C.net.lines[C.routes[r].lineId] : null;
+      eCo[e] = coIdx.get(L && L.coId != null ? L.coId : 0) || 0;
+    }
     const net = {
       C: C, N: N, R: R, nNodes: nNodes, nE: nE, platBase: platBase, exits: exits, acc: acc, rideEdge: rideEdge, boardEdge: boardEdge,
       eFrom: Int32Array.from(E.from), eTo: Int32Array.from(E.to), eType: Uint8Array.from(E.type), eRoute: Int32Array.from(E.route),
       eLeg: Int32Array.from(E.leg), eDir: Uint8Array.from(E.dir), eSt: Int32Array.from(E.st), eKm: Float32Array.from(E.km), eT0: Float32Array.from(E.t0), eWm: Float32Array.from(E.wm), eTram: Uint8Array.from(E.tram), eBus: Uint8Array.from(E.bus),
+      eCo: eCo, coN: coOf.length, coOf: coOf,
       routeKey: C.routes.map(function (r) { return r.lineId + ':' + (r.svc || '') + ':' + r.stIds.join(','); }), isSvc: Uint8Array.from(C.routes, function (r) { return r.svc ? 1 : 0; }),
       boardShare: null,
     };
@@ -1893,7 +1948,9 @@
     const N = net.N, nn = net.nNodes, nE = net.nE;
     let key=skimKeys.get(net);if(key===undefined){key=++skimSerial;skimKeys.set(net,key);}
     let work = store.work;
-    if (!work || work.cost.length !== nE || work.dist.length !== nn || work.open.length !== N) { store.valid=false; work = store.work = { cost: new Float32Array(nE), tAct: new Float32Array(nE), dist: new Float64Array(nn), dtm: new Float32Array(nn), dkm: new Float32Array(nn), dtr: new Float32Array(nn), dbr: new Float32Array(nn), open: new Uint8Array(N) }; }
+    if (!work || work.cost.length !== nE || work.dist.length !== nn || work.open.length !== N) { store.valid=false; work = store.work = { cost: new Float32Array(nE), tAct: new Float32Array(nE), dist: new Float64Array(nn), dtm: new Float32Array(nn), dkm: new Float32Array(nn), dtr: new Float32Array(nn), dbr: new Float32Array(nn), dco: null, open: new Uint8Array(N) }; }
+    // 多公司：逐节点、逐公司的乘车里程累加器（coN 家公司）
+    if ((net.coN | 0) > 1) { const need = nn * net.coN; if (!work.dco || work.dco.length !== need) work.dco = new Float64Array(need); } else work.dco = null;
     const cost = work.cost, tAct = work.tAct, open = work.open;
     // 本时段没有列车的路线不能乘坐（代价 INF，最短路走不通，不是长时间候车）：按各方向的频率判断。环线只停一个方向时，停的方向不能乘车，另一个方向照常；
     // 没有任何路线开行的车站这一时段关站，不能进出，也不能借站外换乘穿过
@@ -1934,7 +1991,8 @@
     // 中途取消的生成器不能把只完成一部分的最短路当成有效缓存。
     store.valid=false;
     // 工作线程分段计算（大线网，v2.3）：费用数组各段各拷一份交给线程，结果按行拷回
-    if (!this.syncSolve && N >= 48 && SkimPool.ready()) {
+    // 多公司分开计价要逐 OD 记录各公司里程，工作线程的存储不参与这套累加，多公司时改走主线程
+    if (!this.syncSolve && N >= 48 && (net.coN | 0) <= 1 && SkimPool.ready()) {
       const reuse = store.parts; store.parts = null;
       const req = SkimPool.submit(net, cost.slice(), tAct.slice(), prm.xpen, reuse);
       yield* waitForWorker(SkimPool, req, () => req.left);
@@ -2005,14 +2063,22 @@
     return 0;
   };
   Model.prototype.allocSkimStore = function (net, buf) {
-    const N = net.N, nn = net.nNodes;
+    const N = net.N, nn = net.nNodes, coN = net.coN | 0;
     const st = buf.skim;
+    // 多公司分开计价（v3.89）：每个 OD 上各公司各自的乘车里程（N×N×coN），只有一家公司时为空
+    const allocCo = function (s) {
+      if (coN > 1) {
+        if (!s.co || s.co.length !== coN || !s.co[0] || s.co[0].length !== N * N) s.co = Array.from({ length: coN }, function () { return new Float32Array(N * N); });
+      } else s.co = null;
+    };
     if (st && st.N === N && st.nn === nn) {
       if (st.gt.length !== N * N || !st.br) { st.gt = new Float32Array(N * N); st.tm = new Float32Array(N * N); st.km = new Float32Array(N * N); st.tr = new Float32Array(N * N); st.br = new Float32Array(N * N); st.valid = false; }   // 上次在方式选择线程手里被放弃
+      allocCo(st);
       return st;
     }
     // tr：最短路里的有轨电车里程；br：公交里程（v-bus）。km - tr - br 是地铁里程，三者各用各自票制计费
     buf.skim = { N: N, nn: nn, gt: new Float32Array(N * N), tm: new Float32Array(N * N), km: new Float32Array(N * N), tr: new Float32Array(N * N), br: new Float32Array(N * N), pred: null, order: null, nOrd: null, parts: null, D: new Float32Array(N * N) };
+    allocCo(buf.skim);
     return buf.skim;
   };
 
@@ -2066,7 +2132,8 @@
     if (choices) choices.fill(-2);
     const t = od.t;
     // 方式选择的输入与统计数组（每次迭代一次性组装，见 odOrigin）
-    const S = new Float64Array(14), fp = Model.fareParams(this.fare), fpT = Model.fareParams(this.fareTram || CFG.tram.fareDefault), fpB = Model.fareParams(this.fareBus || CFG.bus.fareDefault), bg = CM.Eras ? CM.Eras.bg(this.year) : null;
+    // S[0..13] 为原有统计；S[14+c] 记录第 c 家公司自己收到的票款（多公司分开计价，v3.89）
+    const S = new Float64Array(30), fp = Model.fareParams(this.fare), fpT = Model.fareParams(this.fareTram || CFG.tram.fareDefault), fpB = Model.fareParams(this.fareBus || CFG.bus.fareDefault), bg = CM.Eras ? CM.Eras.bg(this.year) : null;
     const K = { Z: Z, NZ: NZ, N: N, B: this.B, odStart: od.start, odDest: od.dest, t0: t[0], t1: t[1], t2: t[2], t3: t[3], t4: t[4], t5: t[5],
       co: co, cr: cr, cO: new Float64Array(NPK), cR: new Float64Array(NPK), facW: facW, facWe: facWe, odOk: od.F === F && od.key === fn.key,
       hostZ: hostZ, nx: nx, ny: ny, skT: skT, skK: skK, kmPerCell: kmPerCell, pkO: lay.pkO, pkR: lay.pkR, ckR: lay.ckR,
@@ -2076,6 +2143,8 @@
       fareFlatB: (this.fareBus ? this.fareBus.flat : 0), fareKm0B: fpB.km0, fareStepB: fpB.step, fareIncB: fpB.inc, fareCapB: fpB.cap, fareTabB: Model.fareTab(this.fareBus || CFG.bus.fareDefault, this.year, prm.vot),
       bgShare: bg ? bg.share * (1 - (net && CM.Takeover ? CM.Takeover.bgCut(net.C.net, this.year) : 0)) : 0, bgSpeed: bg ? bg.speed : 1, bgWait: bg ? bg.wait : 0, bgFare: bg ? bg.fare : 0, roadKeep: bg ? bg.keep : 0, bgRoad: bg && bg.road != null ? bg.road : -1, bgSlow: bg ? bg.slow || 1 : 1,
       acc: acc, accOk: !!accOk, choices: choices, skimStore: store, gtS: store ? store.gt : null, tmS: store ? store.tm : null, kmS: store ? store.km : null, trS: store ? store.tr : null, brS: store ? store.br : null, DS: store ? store.D : null,      perMin: IND.perMin, capSh: IND.cap.sh, capLz: IND.cap.lz,
+      // 多公司分开计价（v3.89）：各 OD 上各公司的乘车里程，coN=1 时为 null
+      coN: net.coN | 0, coKm: store && store.co ? store.co : null, coOf: net.coOf || [0],
       habit: this.habit && this.habit.length === Z ? this.habit : null, habAsc: CFG.habit ? CFG.habit.asc : 0, habLite: CFG.habit ? CFG.habit.carLite : 0, hubAsc: CFG.choice.hubAsc || 0, hubFeed: CFG.choice.hubFeed || null,
       hubEligible: Uint8Array.from(fn.list, f => f.T?.hub && !f.ext?.gate),
       carDem: carDem, hasCar: hasCar, S: S, pT: pT, pM: pM, zTrips: P.zTrips, zMetro: P.zMetro, zAccess: P.zAccess, zCW: P.zCW, zCT: P.zCT, zJ: this.zJobs, blocks: blocks, desTot: P.desTot, desMetro: P.desMetro,
@@ -2097,6 +2166,8 @@
     }
     if (!odDone) for (let i = 0; i < Z; i++) { odOrigin(K, i); if ((i & 7) === 7) yield; }
     st.trips = S[0]; st.metro = S[1]; st.car = S[2]; st.timeSum = S[3]; st.carTime = S[4]; st.metroTime = S[5]; st.fare = S[6]; st.metroPkm = S[7]; st.carPkm = S[8]; st.vkt = S[9];
+    // 各公司自收票款（v3.89）：键是公司 id，值为该时段该公司的票款（元）
+    if ((K.coN | 0) > 1) { const byCo = {}; for (let c = 0; c < K.coN; c++) byCo[K.coOf[c]] = S[14 + c]; st.byCo = byCo; } else st.byCo = null;
     st.commTrips = S[10]; st.commTime = S[11]; st.ind = S[12]; st.indM = S[13];
     if (bgn) { st.bg = bgS[0]; st.bgFerry = bgS[1]; st.bgPkm = bgS[2]; }
     for (let k = 0; k < NPK; k++) { st[TKEY[k]] = pT[k]; st[MKEY[k]] = pM[k]; }
@@ -2456,7 +2527,8 @@
       if (!P || !P.stats) { ok = false; continue; }
       const h = this.pHours[p], s = P.stats;
       const mf = p === 3 ? 0.9 : 1;
-      for (const k in s) D[k] = (D[k] || 0) + s[k] * h * (METRO_KEYS.has(k) ? mf : 1);
+      for (const k in s) { if (k === 'byCo') continue; if (typeof s[k] !== 'number') continue; D[k] = (D[k] || 0) + s[k] * h * (METRO_KEYS.has(k) ? mf : 1); }
+      if (s.byCo) { D.byCo = D.byCo || {}; for (const k in s.byCo) D.byCo[k] = (D.byCo[k] || 0) + s.byCo[k] * h * mf; }   // 各公司自收票款（v3.89）
       if (net && net.R) {
         for (let r = 0; r < net.R; r++) {
           const rt = net.C.routes[r], fp = plan && plan[r];
@@ -2475,7 +2547,13 @@
       net.C.routes.forEach((rt, i) => { if (rt.line.rail) { if (rt.line.railOwned) owned += boards[i] || 0; else external += boards[i] || 0; } });
       const total = D.metro || 0;
       D.railFare = total > 0 ? D.fare * owned / total : 0;
-      if (total > 0) D.fare *= 1 - external / total;
+      if (total > 0) {
+        const cut = D.fare * external / total;
+        D.fare -= cut;
+        // 国铁线的 coId 默认是 0，票款被算进了第一家公司（见 eCo 构造）。
+        // 剔除外部国铁票款时必须同步扣公司账，否则 ΣbyCo > 总票款。
+        if (D.byCo) { const c0 = net && net.coOf ? net.coOf[0] : 0; D.byCo[c0] = Math.max(0, (D.byCo[c0] || 0) - cut); }
+      }
     }
     D.ready = ok;
     return this.finishDaily(D, perList[0] && perList[0].stats, net);
@@ -2495,6 +2573,7 @@
   Model.prototype.weekAvg = function (a, b, net) {
     const W = CFG.trips.weekWeights, D = {};
     for (const k in a) if (typeof a[k] === 'number' && typeof b[k] === 'number') D[k] = a[k] * W.wd + b[k] * W.we;
+    if (a.byCo || b.byCo) { D.byCo = {}; const A = a.byCo || {}, B = b.byCo || {}; for (const k in A) D.byCo[k] = (A[k] || 0) * W.wd + (B[k] || 0) * W.we; for (const k in B) if (!(k in D.byCo)) D.byCo[k] = B[k] * W.we; }
     this.finishDaily(D, undefined, net);
     D.congAM = a.congAM;   // 早高峰拥堵：工作日
     D.ready = !!(a.ready && b.ready);

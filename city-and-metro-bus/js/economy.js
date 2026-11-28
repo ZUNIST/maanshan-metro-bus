@@ -202,7 +202,14 @@
   // 运营补贴（v3.1 平衡：后期线网越修越大、郊区线路客流少，运营费用吃掉全部拨款，「后期一直亏钱」）：
   // 上月票款抵不了运营费用（列车运行与车站，不含车站商业）时，政府按财力系数补上缺口的一部分（默认一半），随月初拨款发放。
   // 只补一半：客流差的线路仍然亏钱，提高客流和票款覆盖率依然有回报；线网小、票款够用时几乎没有补贴
-  Economy.opsSubRate = function () { const k = CFG.economy.opsSubsidy; return k != null ? U.clamp(+k || 0, 0, 1) : 0.5; };
+  // 运营补贴力度（补上月运营缺口的几成）。玩家可在「多公司运营」面板里调整（存 g.coRule.subRate），
+  // 不设时用本城配置。作为政府，补贴力度本来就是可以自己定的政策参数。
+  Economy.opsSubRate = function (g) {
+    const gg = g || CM.game;
+    if (gg && gg.coRule && gg.coRule.subRate != null) return U.clamp(+gg.coRule.subRate || 0, 0, 1);
+    const k = CFG.economy.opsSubsidy;
+    return k != null ? U.clamp(+k || 0, 0, 1) : 0.5;
+  };
   Economy.prototype.opsSubsidy = function () {
     const k = Economy.opsSubRate(), L = this.ledger[this.ledger.length - 1];
     if (!(k > 0) || !L) return 0;
@@ -730,13 +737,26 @@
       L.pkm += pkm[r]; L.ckm += ckm[r]; L.riders += sd.routeBoard ? sd.routeBoard[r] || 0 : 0;
       for (const sid of C.routes[r].stIds) L.stations.add(sid);
     }
+    // 各公司分开计价（v3.89）：公司票款用仿真里各公司自己收到的钱，
+    // 公司内部再按各线周转量分摊（同一家公司只有一套票制，属内部核算，不是跨公司分摊）。
+    const dailyByCo = (day && day.byCo) || null;
+    const coPkm = new Map(), coFare = new Map();
+    let directFare = 0;
+    lines.forEach(function (L) {
+      if (!L.L || L.L.rail) return;
+      const co = CM.Companies ? CM.Companies.lineCo(L.L) : 0;
+      coPkm.set(co, (coPkm.get(co) || 0) + L.pkm);
+    });
+    if (dailyByCo) for (const k in dailyByCo) directFare += dailyByCo[k] / 10000 * 30.4;
+    if (directFare > 0) for (const k in dailyByCo) coFare.set(+k, dailyByCo[k] / 10000 * 30.4);
     lines.forEach(function (L) {
       if (!L.L) return;
       let st = 0, com = 0, todCost = 0; L.stations.forEach(function (sid) { const s = byId.get(sid); if (s) { st += s.ops / s.nL; com += s.com / s.nL; todCost += s.todCost / s.nL; } });
-      const fare = pkmT > 0 ? fareM * L.pkm / pkmT : 0, train = ckmT > 0 ? trainM * L.ckm / ckmT : 0;
+      const co = CM.Companies ? CM.Companies.lineCo(L.L) : 0, cpk = coPkm.get(co) || 0;
+      const fare = (coFare.size && cpk > 0 && coFare.has(co)) ? coFare.get(co) * L.pkm / cpk : (pkmT > 0 ? fareM * L.pkm / pkmT : 0), train = ckmT > 0 ? trainM * L.ckm / ckmT : 0;
       out.lines.push({ lid: L.lid, L: L.L, riders: L.riders, nst: L.stations.size, fare: fare, train: train, station: st, com: com, todCost: todCost, cost: train + st + todCost, net: fare + com - train - st - todCost, rec: train + st > 0 ? fare / (train + st) : 0 });
     });
-    out.tot.fare = fareM; out.tot.train = trainM;
+    out.tot.fare = directFare > 0 ? directFare : fareM; out.tot.train = trainM;
     out.ready = true;
     return out;
   };

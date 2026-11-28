@@ -659,6 +659,7 @@
     if(model.hasReviewWork()){yield* model.solveReviewsGen();this.tasks.monthly(this).forEach(o=>this.logTask(o));}
     if (railRCs.length) CM.RailConcessions.monthly(this);   // 国铁运营权：按合同支付月费（各线分别计费）
     if (CM.Corp) CM.Corp.monthly(this);   // 政府合同（v2.5）：评标、履约考核与付费、招标；履约信誉影响本月拨款
+    if (CM.PPP) CM.PPP.monthly(this);   // 政府与社会资本合作（v3.88）：可用性付费、施工进度、特许期满移交
     if (CM.Fleet && this.fleet) CM.Fleet.monthly(this);   // 车队（v2.5）：高峰运力不足、列车超龄提示
     if (CM.Development) CM.Development.settleProperty(this);   // Starry 社区版：站城物业按成交与入驻收租，记入本月账本
     this.econ.payGrant(y, m);
@@ -672,6 +673,8 @@
       this.draft.evalVer = -1; this.draft.compVer = -1;
       this.invalidatePrediction('城市状态已更新（' + y + '年' + m + '月），请重新计算预测');
     }
+    // 私营铁路通车（v3.88）：线网在月结算中段被改写，此刻再换网才安全（recordHistory 已用过旧模型）
+    if (this._pppDirty) { this._pppDirty = false; this.refreshOperations(); }
     this.emit('month', { y: y, m: m });
     return true;   // v2.9.6：settleDay 据此确认月度账目已完整提交
   };
@@ -1134,6 +1137,7 @@
       net: this.net,
       companies: this.companies,
       coRule: this.coRule,
+      ppp: this.ppp || undefined,   // 政府与社会资本合作：待批项目、特许经营合同与冷静期（v3.88）
       railConcession: this.railConcession || undefined,   // 国铁运营权合同（v3.17，按线存储）
       econ: this.econ.serialize(),
       tasks: this.tasks.serialize(),
@@ -1209,6 +1213,7 @@
       g.net = s.net;
       g.companies = s.companies;
       g.coRule = s.coRule;
+      g.ppp = s.ppp || null;
       if (CM.Companies) CM.Companies.ensure(g);   // 旧档兜底：默认单公司
       g.railConcession = s.railConcession || null;   // 国铁运营权合同（v3.17，按线存储，兼容旧扁平格式）
       M.repairStationNames(g.net, g.city);
