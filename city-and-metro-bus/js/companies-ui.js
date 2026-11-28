@@ -4,6 +4,11 @@
   const U = CM.U, R = CM.Companies;
   const UI = {};
 
+  // 划转目标：私营公司不接收别人的线路（它只修自己的线）
+  function coTargets(g) {
+    return (g.companies || []).filter(function (c) { return c.kind !== 'private'; });
+  }
+
   // 分公司账本：按线路归属汇总客流、客运周转量与票款。
   // 票款按「实际乘坐里程」清分（CM.Clearing）：乘客在哪家线路上坐了多少公里，钱就按那个比例切。
   // 这取代了旧版「按上车人次摊」——那种算法让接驳短线躺着赚钱、替人承运长距离的线路一分不拿。
@@ -144,6 +149,14 @@
         h('span', { class: 'tiny muted' }, '各公司分开计价')));
       clearBox.appendChild(h('div', { class: 'tiny muted', style: { marginTop: '6px' } },
         '乘客在哪家线路上坐了多少公里，就按那家的票制付钱；跨公司出行要各付一次起步价。票款是各家自己收的，不做全网分摊。'));
+      // 清分自查（v3.91）：各公司自收票款之和应与模型的票款总额一致，差的是枢纽接驳那一点
+      const chk = CM.Clearing.check ? CM.Clearing.check(g) : null;
+      if (chk && chk.fareRatio > 0) {
+        const diff = Math.abs(1 - chk.fareRatio) * 100;
+        clearBox.appendChild(h('div', { class: 'tiny', style: { marginTop: '4px', color: diff < 1 ? '#0f7f5c' : '#854f0b' } },
+          '清分自查：各公司自收合计 ' + U.fmtMoney((chk.fareDirect || 0) / 10000 * 30.4) + '/月，与模型票款差 ' + diff.toFixed(1) + '%' +
+          (diff < 1 ? '（对得上）' : '（检查是否有线路未归属）')));
+      }
     } else {
       clearBox.appendChild(h('div', { class: 'row between' }, h('b', null, '票款清分'),
         h('span', { class: 'tiny muted' }, '起步价 ' + U.fmtPct(bw, 0) + ' 归进站')));
@@ -191,11 +204,14 @@
       const colorIn = h('input', { type: 'color', value: c.color, 'aria-label': '公司颜色', style: { width: '34px', height: '26px', padding: 0, border: 'none', background: 'none' } });
       colorIn.onchange = function () { R.recolor(g, c.id, colorIn.value); changed(); };
       head.appendChild(h('div', { class: 'row' }, nameIn, colorIn));
-      if (c.id !== 0 && g.companies.length > 1) head.appendChild(h('button', { class: 'btn xs ghost', onclick: function () {
+      if (c.kind === 'private') head.appendChild(h('span', { class: 'badge b-violet' }, '私营 · 自负盈亏'));
+      if (c.id !== 0 && g.companies.length > 1 && c.kind !== 'private') head.appendChild(h('button', { class: 'btn xs ghost', onclick: function () {
         if (R.remove(g, c.id)) changed('公司已撤销，原线路划回第一家公司');
       } }, '撤销'));
       card.appendChild(head);
       const L = led[c.id] || { lines: 0, boards: 0 };
+      if (c.kind === 'private' && c.fin) card.appendChild(h('div', { class: 'tiny', style: { margin: '4px 0', color: '#854f0b' } },
+        '自有资金 ' + U.fmtMoney(c.fin.cash || 0) + ' · 每 ' + (CM.Private ? CM.Private.REVIEW_MONTHS : 6) + ' 个月自主评估线路投资'));
       card.appendChild(h('div', { class: 'tiny muted', style: { margin: '4px 0' } },
         '线路 ' + L.lines + ' 条 · 里程 ' + (L.len || 0).toFixed(1) + ' km · 日上车 ' + Math.round(L.boards) + ' 人次' +
         (L.cleared ? ' · 周转量 ' + U.fmtNum((L.pkm || 0) / 10000, 1) + ' 万人公里' : '')));
@@ -213,15 +229,20 @@
       for (const lid in g.net.lines) {
         const line = g.net.lines[lid]; if (!line || line.rail || R.lineCo(line) !== c.id) continue;
         any = true;
+        const label = h('span', { class: 'tiny grow' }, h('i', { style: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: line.color || '#888', marginRight: '6px' } }), line.name);
+        // 私营公司自己修的线是它的资产，不参与划转（v3.91）
+        if (line.owner != null && CM.Private && CM.Private.isPrivate(g, line.owner)) {
+          list.appendChild(h('div', { class: 'row between', style: { margin: '2px 0' } }, label,
+            h('span', { class: 'tiny', style: { color: '#854f0b' } }, '私营资产')));
+          continue;
+        }
         const sel = h('select', { 'aria-label': '线路归属', onchange: function () {
           if (R.assign(g, lid, +sel.value)) changed('「' + line.name + '」已划转，从本月起记入新公司');
         } });
-        g.companies.forEach(function (t) {
+        coTargets(g).forEach(function (t) {
           sel.appendChild(h('option', { value: t.id, selected: t.id === c.id ? 'selected' : null }, t.name));
         });
-        list.appendChild(h('div', { class: 'row between', style: { margin: '2px 0' } },
-          h('span', { class: 'tiny grow' }, h('i', { style: { display: 'inline-block', width: '8px', height: '8px', borderRadius: '50%', background: line.color || '#888', marginRight: '6px' } }), line.name),
-          sel));
+        list.appendChild(h('div', { class: 'row between', style: { margin: '2px 0' } }, label, sel));
       }
       if (!any) list.appendChild(h('div', { class: 'tiny muted' }, '暂无线路，用下面的下拉把线路划进来'));
       card.appendChild(list);
@@ -244,10 +265,11 @@
     body.appendChild(h('h3', null, '线路划转'));
     for (const lid in g.net.lines) {
       const line = g.net.lines[lid]; if (!line || line.rail) continue;
+      if (line.owner != null && CM.Private && CM.Private.isPrivate(g, line.owner)) continue;   // 私营资产不划转
       const sel = h('select', { 'aria-label': '线路归属', onchange: function () {
         if (R.assign(g, lid, +sel.value)) changed('「' + line.name + '」已划转，从本月起记入新公司');
       } });
-      g.companies.forEach(function (t) { sel.appendChild(h('option', { value: t.id, selected: t.id === R.lineCo(line) ? 'selected' : null }, t.name)); });
+      coTargets(g).forEach(function (t) { sel.appendChild(h('option', { value: t.id, selected: t.id === R.lineCo(line) ? 'selected' : null }, t.name)); });
       body.appendChild(h('div', { class: 'row between', style: { margin: '3px 0' } },
         h('span', { class: 'tiny grow' }, line.name), sel));
     }

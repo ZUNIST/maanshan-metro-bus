@@ -53,20 +53,15 @@
   P.usage = function (g) { const cap = P.capMonth(g); return cap > 0 ? P.committed(g) / cap : 0; };
 
   // ---------------- AI 主体 ----------------
-  // 第一家私营公司按需创建。名字用真实的安徽/马鞍山轨交投资主体风格。
+  // 私营公司由 CM.Private 统一创建与命名（v3.91）：宁马两张图叫「宁马轨道交通」，
+  // 其他城市按本地地名生成；这里只取它的 id。
   P.aiOrg = function (g) {
-    R.ensure(g);
-    let org = (g.companies || []).find(function (c) { return c.kind === 'private'; });
-    if (org) return org.id;
-    const id = R.add(g, '宁马轨道交通');
-    if (id < 0) return -1;
-    const c = R.get(g, id);
-    if (c) { c.kind = 'private'; c.color = '#d4537e'; }
-    return id;
+    return (CM.Private && CM.Private.org) ? (function () { const c = CM.Private.org(g); return c ? c.id : -1; })() : -1;
   };
 
   // ---------------- 提议 ----------------
-  P.propose = function (g, orgId) {
+  // pick 可选：私铁自己已经选好走廊（私有资金不够时直接拿这条来谈），省一次寻路。
+  P.propose = function (g, orgId, pick) {
     const A = CM.AIRoute;
     if (!A || !A.choose || !A.bid) return { ok: false, why: '线路生成器不可用' };
     const s = P.ensure(g);
@@ -74,12 +69,12 @@
     if (g.ym() < s.cdUntil) return { ok: false, why: '冷静期还有 ' + (s.cdUntil - g.ym()) + ' 个月' };
     const building = s.contracts.filter(function (c) { return c.state === 'build'; }).length;
     if (building >= P.MAX_BUILDING) return { ok: false, why: '在建项目已达 ' + P.MAX_BUILDING + ' 条上限' };
-    const pick = A.choose(g, orgId, { tryN: 8 });
-    if (!pick) return { ok: false, why: '没有值得修的走廊（密度不足或已被覆盖）' };
-    const bid = A.bid(g, pick.route);
+    const pick2 = pick || A.choose(g, orgId, { tryN: 8 });
+    if (!pick2 || !pick2.route) return { ok: false, why: '没有值得修的走廊（密度不足或已被覆盖）' };
+    const bid = A.bid(g, pick2.route);
     const prop = {
-      id: s.nextId++, orgId: orgId,
-      route: { pts: pick.route.pts, stations: pick.route.stations, km: pick.route.km },
+      id: s.nextId++, orgId: orgId, ym: g.ym(),
+      route: { pts: pick2.route.pts, stations: pick2.route.stations, km: pick2.route.km },
       bid: bid, apM: bid.ask / 12, years: bid.years,
       buildMonths: Math.round(U.clamp(bid.km * 4, 30, 72)),
       haggle: 0,
@@ -87,6 +82,24 @@
     prop.afford = prop.apM <= P.headroom(g) + 1e-6;
     s.props.push(prop);
     return { ok: true, prop: prop };
+  };
+
+  // 未批复的提案超过 P.PROP_TTL 个月自动撤回（v3.91）：
+  // 否则一份没人理的提案会一直卡在那里，私铁再也不会做下一次评估。
+  P.expire = function (g, ym) {
+    const s = P.ensure(g);
+    if (!s.props.length) return 0;
+    const ttl = (CM.Private && CM.Private.PROP_TTL) || 12;
+    const keep = [];
+    let gone = 0;
+    for (const p of s.props) {
+      if (p.ym != null && ym - p.ym >= ttl) {
+        gone++;
+        if (g.logEvent) g.logEvent({ tag: '经营', title: '私铁撤回项目申请', desc: R.name(g, p.orgId) + ' 的 ' + (p.route.km || 0).toFixed(1) + ' km 提案 ' + ttl + ' 个月未获批，已撤回并转投别处。' });
+      } else keep.push(p);
+    }
+    if (gone) s.props = keep;
+    return gone;
   };
 
   // 压价：AI 让一步，但项目本身好的时候它会拒绝并撤回提议（它有别的买家/更好的用途）
@@ -123,7 +136,7 @@
     const ym = g.ym(), org = prop.orgId;
     const c = {
       id: 'p' + prop.id, title: R.name(g, org) + ' · ' + prop.route.km.toFixed(1) + ' km',
-      orgId: org, apM: prop.apM, ask: prop.bid.ask, years: prop.years,
+      orgId: org, apM: prop.apM, ask: prop.bid.ask, years: prop.years, funded: 'ppp',
       route: prop.route, km: prop.route.km, equity: prop.bid.capex,
       start: ym, buildMonths: prop.buildMonths, state: 'build',
       lineId: null, paid: 0, haggle: prop.haggle,
@@ -150,7 +163,9 @@
         continue;
       }
       if (c.state === 'run') {
-        if (ym - c.start >= c.buildMonths + c.years * 12) {
+        // 自有资金自建的线没有特许期、没有可用性付费（v3.91）：线路永久归私铁，政府不付钱
+        if (c.funded === 'self') continue;
+        if (c.years > 0 && ym - c.start >= c.buildMonths + c.years * 12) {
           c.state = 'ended';
           if (c.lineId != null && R.lineCo(g.net.lines[c.lineId]) === c.orgId) R.assign(g, c.lineId, 0);   // 特许期满移交政府
           if (g.logEvent) g.logEvent({ tag: '经营', title: '特许经营期满', desc: c.title + ' 移交政府，转入公营线网。' });
@@ -170,14 +185,24 @@
     const A = CM.AIRoute;
     if (!A || !A.apply || !c.route) return false;
     const color = R.color(g, c.orgId);
+    // 线路命名：本公司第几条线（自建与 PPP 共用一套编号）
+    let seq = 1;
+    for (const lid in g.net.lines) { const L = g.net.lines[lid]; if (L && !L.rail && L.owner === c.orgId) seq++; }
+    const nm = R.name(g, c.orgId) + ' ' + seq + ' 号线';
     const r = A.apply(g, { ok: true, pts: c.route.pts, stations: c.route.stations, km: c.route.km },
-      { name: R.name(g, c.orgId) + ' ' + (c.title.split('·')[1] || '').trim(), color: color, owner: c.orgId, coId: c.orgId });
+      { name: nm, color: color, owner: c.orgId, coId: c.orgId });
     if (!r || !r.ok) return false;
     c.lineId = r.lineId;
+    c.lineName = nm;
     g.netVersion = (g.netVersion || 0) + 1;
     // 月结算中段不能直接换网（recordHistory 会读到空模型），标脏由月底统一刷新
     g._pppDirty = true;
-    if (g.logEvent) g.logEvent({ tag: '建设', title: '私营铁路通车', desc: c.title + ' 建成通车（' + c.route.km.toFixed(1) + ' km），特许经营 ' + c.years + ' 年，可用性付费 ' + U.fmtMoney(c.apM) + '/月。' });
+    if (g.logEvent) g.logEvent({
+      tag: '建设', title: c.funded === 'self' ? '私营铁路通车' : '私营铁路通车（PPP）',
+      desc: c.title + ' 建成通车（' + c.route.km.toFixed(1) + ' km）' +
+        (c.funded === 'self' ? '，自有资金建设，线路归 ' + R.name(g, c.orgId) + ' 所有。'
+          : '，特许经营 ' + c.years + ' 年，可用性付费 ' + U.fmtMoney(c.apM) + '/月。'),
+    });
     return true;
   };
 
@@ -200,6 +225,28 @@
     bar.appendChild(h('div', { style: { height: '100%', width: Math.min(100, cap > 0 ? used / cap * 100 : 0).toFixed(1) + '%', background: used / cap > 0.9 ? '#c0392b' : '#2b7ea8' } }));
     box.appendChild(bar);
     body.appendChild(box);
+
+    // 私营铁路公司：自有资金、上次决策与下次评估（v3.91）
+    const PV = CM.Private;
+    const org = PV && PV.enabled(g) ? PV.org(g) : null;
+    if (org) {
+      const fin = org.fin || (org.fin = { cash: 0 });
+      const sb = h('div', { class: 'tk-card', style: { margin: '8px 0', borderLeft: '3px solid #d4537e' } });
+      sb.appendChild(h('div', { class: 'row between' },
+        h('div', { class: 'row' }, h('b', null, org.name), h('span', { class: 'badge b-violet', style: { marginLeft: '6px' } }, '私营')),
+        h('span', { class: 'tiny', style: { whiteSpace: 'nowrap', color: (fin.cash || 0) > 0 ? '#0f7f5c' : '#b42318' } },
+          '自有资金 ' + U.fmtMoney(fin.cash || 0))));
+      sb.appendChild(h('div', { class: 'tiny muted', style: { marginTop: '4px', lineHeight: '1.7' } },
+        '每 ' + PV.REVIEW_MONTHS + ' 个月自行评估一次：自有资金够付整条线造价就自己修（线路归它，票款记它名下），不够就来做 PPP。' +
+        ' 自有线路 ' + PV.selfLines(g, org) + '/' + PV.MAX_SELF + ' 条 · 下次评估还有 ' + PV.nextReview(g, org) + ' 个月。'));
+      if (fin.net != null) sb.appendChild(h('div', { class: 'tiny muted' },
+        '上月：票款 ' + U.fmtMoney(fin.fare || 0) + ' · 补贴 ' + U.fmtMoney(fin.sub || 0) +
+        ' · 运营 ' + U.fmtMoney(fin.ops || 0) + (fin.ap ? ' · PPP 付费 ' + U.fmtMoney(fin.ap) : '') +
+        ' → 净 ' + U.fmtMoney(fin.net || 0)));
+      if (fin.lastNote) sb.appendChild(h('div', { class: 'tiny', style: { marginTop: '3px', color: '#854f0b' } },
+        '上次决策：' + fin.lastNote));
+      body.appendChild(sb);
+    }
 
     // 待批项目
     if (s.props.length) {
@@ -266,12 +313,15 @@
       for (const c of live) {
         const el = Math.max(0, ym - c.start);
         const build = c.state === 'build';
+        const self = c.funded === 'self';
         const prog = build ? Math.min(1, el / Math.max(1, c.buildMonths)) : 1;
         list.appendChild(h('div', { class: 'tiny', style: { marginTop: '6px', paddingTop: '6px', borderTop: '0.5px solid var(--color-border-tertiary)' } },
           h('div', { class: 'row between' },
-            h('span', null, c.title),
-            h('span', { style: { color: build ? '#854f0b' : '#0f7f5c' } }, build ? ('施工 ' + Math.round(prog * 100) + '%') : ('运营中 · 已付 ' + U.fmtMoney(c.paid || 0)))),
-          h('div', { class: 'tiny muted' }, U.fmtMoney(c.apM) + '/月 · ' + c.years + ' 年 · ' + (build ? ('剩 ' + Math.max(0, c.buildMonths - el) + ' 个月通车') : '特许期剩 ' + Math.max(0, c.years * 12 - (el - c.buildMonths)) + ' 个月'))));
+            h('span', null, c.title + (self ? '（自有资金）' : '')),
+            h('span', { style: { color: build ? '#854f0b' : '#0f7f5c' } }, build ? ('施工 ' + Math.round(prog * 100) + '%') : (self ? '运营中 · 自营' : ('运营中 · 已付 ' + U.fmtMoney(c.paid || 0))))),
+          h('div', { class: 'tiny muted' }, self
+            ? (build ? ('剩 ' + Math.max(0, c.buildMonths - el) + ' 个月通车 · 不付可用性付费') : '永久经营 · 政府不付费')
+            : (U.fmtMoney(c.apM) + '/月 · ' + c.years + ' 年 · ' + (build ? ('剩 ' + Math.max(0, c.buildMonths - el) + ' 个月通车') : '特许期剩 ' + Math.max(0, c.years * 12 - (el - c.buildMonths)) + ' 个月')))));
       }
       body.appendChild(list);
     }

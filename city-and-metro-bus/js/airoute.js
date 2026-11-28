@@ -589,8 +589,28 @@
     return bestOwn || best;
   };
 
+  // 空网起点（v3.91）：2000 年开局剧本一座站都没有，原来「最近既有站」返回 null，
+  // 所有候选都会被跳过，面板就一直误报「没有值得修的走廊（密度不足）」。
+  // 私铁的第一条线从全图人口+岗位最高的可建格（主城中心）出发；之后的线仍从既有站延伸。
+  A.homeCell = function (g) {
+    const m = g && g.model;
+    if (!m || !m.Z) return null;
+    const city = g.city;
+    let best = -1, bx = 0, by = 0, any = -1, ax = 0, ay = 0;
+    for (let z = 0; z < m.Z; z++) {
+      const v = (m.zPop[z] || 0) + (m.zJobs[z] || 0);
+      if (v > any) { any = v; ax = m.zCx[z]; ay = m.zCy[z]; }
+      if (v <= best) continue;
+      const c = city.cellAt(m.zCx[z], m.zCy[z]);
+      if (c < 0 || city.lu[c] === LU.WATER) continue;   // 主城中心必须在陆地上
+      best = v; bx = m.zCx[z]; by = m.zCy[z];
+    }
+    if (best > 0) return { x: bx, y: by };
+    return any > 0 ? { x: ax, y: ay } : null;
+  };
+
   // ---------------- 选址 ----------------
-  // 对一个候选片区：从自有线网（没有就最近任何站）出发试算一条线，再按
+  // 对一个候选片区：从自有线网（没有就最近任何站，再没有就用主城中心）出发试算一条线，再按
   //   覆盖价值 × 共线加分 × 抢走廊扣分 × 收支是否成立
   // 综合排序。返回排第一的方案，附上全部试算结果便于调试。
   A.choose = function (g, orgId, opt) {
@@ -606,11 +626,12 @@
       cands.push({ z: z, x: m.zCx[z], y: m.zCy[z], pj: pj, cov: cov, score: pj * (1 - cov) });
     }
     cands.sort(function (a, b) { return b.score - a.score; });
+    const home = A.homeCell(g);   // 空网时的第一站起点（有既有站时不会被用到）
     const tried = [];
     // 沿候选列表往下找，直到凑够 tryN 条值得试算的（不能只看前几个：靠前的往往离既有线太近）
     for (const c of cands) {
       if (tried.length >= (o.tryN || 8)) break;
-      const from = o.from || A.nearestStation(g, c.x, c.y, orgId);
+      const from = o.from || A.nearestStation(g, c.x, c.y, orgId) || home;
       if (!from) continue;
       const d = U.dist(from.x, from.y, c.x, c.y);
       if (d < (o.minCells || 8) || d > (o.maxCells || 30)) continue;

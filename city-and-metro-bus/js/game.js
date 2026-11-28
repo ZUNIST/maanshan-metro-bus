@@ -12,6 +12,7 @@
     this.railConcession = null;   // 国铁运营权合同（v3.17）：{chaoma:{local,express}, ningan:{...}} 或 null
     this.companies = null;        // 多公司运营（玩家总揽）：[{id,name,color}]，默认单公司
     this.coRule = null;           // 跨公司规则：{xfer:0/1/2, fareShare:0/1}
+    this.priv = null;             // 私营铁路公司（v3.91）：{base, seq}，公司本身挂在 companies 里（kind:'private'）
     this.events = [];
     this.history = [];
     this.netVersion = 0;
@@ -660,6 +661,7 @@
     if (railRCs.length) CM.RailConcessions.monthly(this);   // 国铁运营权：按合同支付月费（各线分别计费）
     if (CM.Corp) CM.Corp.monthly(this);   // 政府合同（v2.5）：评标、履约考核与付费、招标；履约信誉影响本月拨款
     if (CM.PPP) CM.PPP.monthly(this);   // 政府与社会资本合作（v3.88）：可用性付费、施工进度、特许期满移交
+    if (CM.Private) CM.Private.monthly(this);   // 私营铁路公司（v3.91）：自有资金记账、每 6 个月自主投资决策
     if (CM.Fleet && this.fleet) CM.Fleet.monthly(this);   // 车队（v2.5）：高峰运力不足、列车超龄提示
     if (CM.Development) CM.Development.settleProperty(this);   // Starry 社区版：站城物业按成交与入驻收租，记入本月账本
     this.econ.payGrant(y, m);
@@ -1138,6 +1140,7 @@
       companies: this.companies,
       coRule: this.coRule,
       ppp: this.ppp || undefined,   // 政府与社会资本合作：待批项目、特许经营合同与冷静期（v3.88）
+      priv: this.priv || undefined,   // 私营铁路公司：评估起始月与命名序号（v3.91）
       railConcession: this.railConcession || undefined,   // 国铁运营权合同（v3.17，按线存储）
       econ: this.econ.serialize(),
       tasks: this.tasks.serialize(),
@@ -1214,6 +1217,7 @@
       g.companies = s.companies;
       g.coRule = s.coRule;
       g.ppp = s.ppp || null;
+      g.priv = s.priv || null;
       if (CM.Companies) CM.Companies.ensure(g);   // 旧档兜底：默认单公司
       g.railConcession = s.railConcession || null;   // 国铁运营权合同（v3.17，按线存储，兼容旧扁平格式）
       M.repairStationNames(g.net, g.city);
